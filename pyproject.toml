@@ -29,6 +29,7 @@ classifiers = [
     "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
     "Topic :: Scientific/Engineering :: Physics",
     "Topic :: Software Development :: Libraries :: Python Modules",
 ]
@@ -41,10 +42,20 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-qiskit = ["qiskit>=1.0.0"]
+# qiskit-aer carries AerSimulator, which README.md and every Qiskit example in
+# examples/ import. Without it the documented walkthrough stops at
+# ModuleNotFoundError.
+qiskit = ["qiskit>=1.0.0", "qiskit-aer>=0.15.0"]
 cirq = ["cirq>=1.0.0"]
 pennylane = ["pennylane>=0.30.0"]
-all = ["qiskit>=1.0.0", "cirq>=1.0.0", "pennylane>=0.30.0"]
+yaml = ["pyyaml>=6.0"]
+all = [
+    "qiskit>=1.0.0",
+    "qiskit-aer>=0.15.0",
+    "cirq>=1.0.0",
+    "pennylane>=0.30.0",
+    "pyyaml>=6.0",
+]
 dev = [
     "pytest>=7.0.0",
     "pytest-cov>=4.0.0",
@@ -57,7 +68,7 @@ qbom = "qbom.cli:main"
 
 [project.urls]
 Homepage = "https://github.com/csnp/qbom"
-Documentation = "https://qbom.qramm.org"
+Documentation = "https://github.com/csnp/qbom/tree/main/docs"
 Repository = "https://github.com/csnp/qbom"
 Issues = "https://github.com/csnp/qbom/issues"
 
@@ -74,11 +85,31 @@ ignore = [
     "F841",  # unused variables in incomplete adapter code (TODOs)
 ]
 
+[tool.ruff.lint.per-file-ignores]
+# The examples exist to demonstrate that "import qbom" is the entire API and
+# that it comes before the framework import. Each rule below would rewrite or
+# forbid the thing being demonstrated. tests/test_import_hook.py asserts the
+# order holds, so removing an entry here fails the suite rather than silently
+# changing what the examples prove.
+"examples/*.py" = [
+    "E402",  # import placement is the point of the example
+    "F401",  # `import qbom` has no call site; the import itself is the API
+    "I001",  # sorting moves `import qbom` below the framework, which is the
+             # one order these examples are not demonstrating
+]
+
 [tool.mypy]
 python_version = "3.10"
 strict = false
 ignore_missing_imports = true
 disable_error_code = ["misc", "attr-defined", "union-attr", "arg-type", "comparison-overlap", "type-arg", "operator", "valid-type", "import-untyped"]
+# Type check this package, not its dependencies. cirq ships py.typed, so mypy
+# follows it into numpy, whose __init__.pyi uses PEP 695 `type` statements.
+# Those are a parse error under the 3.10 target above and abort the run before
+# any of src/qbom is checked. ignore_missing_imports already says third-party
+# types are out of scope here; this makes that consistent for typed ones too.
+no_site_packages = true
+
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

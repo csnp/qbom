@@ -289,7 +289,7 @@ No. Industry users benefit from compliance documentation and reproducibility gua
 ## Learn More
 
 - **GitHub:** https://github.com/csnp/qbom
-- **Specification:** https://github.com/csnp/qbom/docs/specs/qbom-spec-1.0.json
+- **Specification:** https://github.com/csnp/qbom/blob/main/docs/specs/qbom-spec-1.0.json
 - **QRAMM Framework:** https://qramm.org
 
 ---

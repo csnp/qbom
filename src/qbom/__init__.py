@@ -25,13 +25,14 @@ Licensed under Apache 2.0
 __version__ = "0.1.0"
 __author__ = "CSNP"
 
-from qbom.core.session import Session, current, export, show
+from qbom.core.session import Session, current, experiment, export, show
 from qbom.core.trace import Trace
 
 __all__ = [
     "Trace",
     "Session",
     "current",
+    "experiment",
     "export",
     "show",
     "__version__",

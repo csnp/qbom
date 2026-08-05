@@ -318,9 +318,13 @@ git commit -m "Add trace for main experimental result"
 
 If traces are empty:
 
-1. Check import order (`import qbom` first)
-2. Ensure you're using a supported framework
-3. Call `qbom.current()` after `job.result()`
+1. Ensure you're using a supported framework
+2. Call `qbom.current()` after `job.result()`
+3. Check the adapter loaded:
+   `from qbom.core.session import Session; print([a.name for a in Session.get()._adapters])`
+
+Import order is not one of the causes. A framework imported after `import qbom`
+is captured the same way as one imported before it.
 
 ### Missing Transpilation
 

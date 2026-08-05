@@ -145,7 +145,7 @@ Amazon Braket support is planned for a future release.
 QBOM installs a Python import hook (`sys.meta_path`) that detects when quantum frameworks are imported:
 
 ```python
-class QBOMImportFinder:
+class QBOMImportFinder(importlib.abc.MetaPathFinder):
     WATCHED_MODULES = {
         "qiskit": "qiskit",
         "qiskit_aer": "qiskit",
@@ -153,11 +153,18 @@ class QBOMImportFinder:
         "pennylane": "pennylane",
     }
 
-    def find_module(self, fullname, path=None):
-        if fullname.split(".")[0] in self.WATCHED_MODULES:
-            return self
-        return None
+    def find_spec(self, fullname, path=None, target=None):
+        if "." in fullname or fullname not in self.WATCHED_MODULES:
+            return None
+        spec = self._find_real_spec(fullname, path, target)
+        ...
+        # Wrap the loader so the adapter is installed once the framework's
+        # own __init__ has finished and its classes exist.
 ```
+
+The finder wraps the loader rather than acting in `find_spec` itself, because
+the adapter has to hook classes such as `AerBackend`, which do not exist until
+the module has executed.
 
 ### 2. Adapter Installation
 
@@ -308,11 +315,22 @@ print([a.name for a in session._adapters])  # Should include your framework
 
 ### Empty Traces
 
-Ensure import order is correct:
+Import order does not matter. The import hook installs the adapter whether the
+framework is imported before or after `import qbom`:
 
 ```python
-import qbom  # Must be FIRST
-from qiskit import ...  # Then framework imports
+import qbom
+from qiskit import ...   # captured
+
+from qiskit import ...   # also captured
+import qbom
+```
+
+If a trace is still empty, check that the adapter loaded at all:
+
+```python
+from qbom.core.session import Session
+print([a.name for a in Session.get()._adapters])
 ```
 
 ### Missing Data

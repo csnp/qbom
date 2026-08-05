@@ -240,37 +240,48 @@ def generate_paper_statement(trace: Trace) -> str:
     parts.append("[bold]Reproducibility Statement[/bold]\n")
     parts.append("[dim](For Methods section)[/dim]\n")
 
-    statement_parts = []
+    sentences = []
 
-    # Software
-    if trace.environment:
-        if trace.environment.quantum_sdk:
-            statement_parts.append(f"Experiments were performed using {trace.environment.quantum_sdk}")
+    # Software and hardware are one sentence. Joined with a period they read as
+    # "using qiskit==2.5.1. on the aer_simulator simulator", and this text is
+    # meant to be pasted into a Methods section.
+    opening = []
+    if trace.environment and trace.environment.quantum_sdk:
+        opening.append(f"Experiments were performed using {trace.environment.quantum_sdk}")
 
-    # Hardware
     if trace.hardware:
         h = trace.hardware
         if h.is_simulator:
-            statement_parts.append(f"on the {h.backend} simulator")
+            target = f"the {h.backend} simulator"
         else:
-            statement_parts.append(f"on the {h.provider} {h.backend} quantum processor ({h.num_qubits} qubits)")
+            target = f"the {h.provider} {h.backend} quantum processor ({h.num_qubits} qubits)"
+        opening.append(f"on {target}" if opening else f"Experiments were performed on {target}")
+
+    if opening:
+        sentences.append(" ".join(opening))
 
     # Transpilation
     if trace.transpilation and trace.transpilation.optimization_level:
         opt_level = trace.transpilation.optimization_level
-        statement_parts.append(f"Circuits were transpiled with optimization level {opt_level}")
+        sentences.append(f"Circuits were transpiled with optimization level {opt_level}")
 
     # Execution
     if trace.execution:
-        statement_parts.append(f"Each experiment used {trace.execution.shots:,} shots")
+        sentences.append(f"Each experiment used {trace.execution.shots:,} shots")
 
     # Calibration
     if trace.hardware and trace.hardware.calibration:
         cal_time = trace.hardware.calibration.timestamp.strftime("%Y-%m-%dT%H:%M:%SZ")
-        statement_parts.append(f"Hardware calibration data from {cal_time} was used")
+        sentences.append(f"Hardware calibration data from {cal_time} was used")
 
-    # Combine
-    statement = ". ".join(statement_parts) + "."
+    if sentences:
+        statement = ". ".join(sentences) + "."
+    else:
+        statement = (
+            "This trace captured no software, hardware or execution detail, so there "
+            "is nothing to state. Import qbom before running your experiment and "
+            "check `qbom validate` for what is missing."
+        )
 
     parts.append(statement)
     parts.append("")

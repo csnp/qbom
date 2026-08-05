@@ -40,4 +40,4 @@ trace.show()
 
 # Export
 trace.export("cirq_bell_state.qbom.json")
-print(f"\nExported to: cirq_bell_state.qbom.json")
+print("\nExported to: cirq_bell_state.qbom.json")

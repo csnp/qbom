@@ -11,8 +11,8 @@
 Copy and paste this entire block:
 
 ```bash
-git clone https://github.com/csnp/qramm-qbom.git
-cd qramm-qbom
+git clone https://github.com/csnp/qbom.git
+cd qbom
 pip install -e ".[qiskit]"
 qbom --version
 ```
@@ -22,7 +22,8 @@ qbom --version
 Install with your preferred quantum framework:
 
 ```bash
-# Qiskit (recommended for IBM Quantum)
+# Qiskit (recommended for IBM Quantum). Includes qiskit-aer, which carries
+# the AerSimulator the examples use.
 pip install -e ".[qiskit]"
 
 # Cirq (for Google Quantum)
@@ -31,7 +32,10 @@ pip install -e ".[cirq]"
 # PennyLane (for hybrid quantum-classical)
 pip install -e ".[pennylane]"
 
-# All frameworks
+# YAML export (qbom export <id> out.yaml -f yaml)
+pip install -e ".[yaml]"
+
+# Everything above
 pip install -e ".[all]"
 ```
 
@@ -43,10 +47,11 @@ pip install -e ".[all]"
 - click >= 8.0.0 (CLI)
 - xxhash >= 3.0.0 (content hashing)
 
-**Framework dependencies** (optional):
-- `[qiskit]`: qiskit >= 1.0.0
+**Optional dependencies:**
+- `[qiskit]`: qiskit >= 1.0.0, qiskit-aer >= 0.15.0
 - `[cirq]`: cirq >= 1.0.0
 - `[pennylane]`: pennylane >= 0.30.0
+- `[yaml]`: pyyaml >= 6.0
 
 ## Verify Installation
 
@@ -78,8 +83,8 @@ This directory is created automatically on first use.
 For contributing to QBOM:
 
 ```bash
-git clone https://github.com/csnp/qramm-qbom.git
-cd qramm-qbom
+git clone https://github.com/csnp/qbom.git
+cd qbom
 
 # Install with dev dependencies and all frameworks
 pip install -e ".[dev,all]"
@@ -99,7 +104,7 @@ ruff check src/qbom
 Pull the latest changes and reinstall:
 
 ```bash
-cd qramm-qbom
+cd qbom
 git pull
 pip install -e ".[qiskit]"
 ```

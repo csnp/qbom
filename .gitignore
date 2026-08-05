@@ -84,8 +84,23 @@ dmypy.json
 *.qbom.json
 .qbom/
 
-# Local development
-CLAUDE.md
-.cursorrules
-.aider*
-.copilot/
+# Secrets and credentials
+.env.local
+.env.*.local
+.env.development
+.env.production
+.env.staging
+.env.test
+secrets.json
+secrets/
+credentials/
+*.pem
+*.key
+*.p12
+*.pfx
+*.keystore
+id_rsa
+id_ed25519
+.netrc
+*.tfstate
+*.tfvars
