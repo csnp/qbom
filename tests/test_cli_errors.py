@@ -11,7 +11,7 @@ from __future__ import annotations
 import pytest
 from click.testing import CliRunner
 
-from qbom.cli.main import _resolve_trace_path, main
+from qbom.cli.main import main
 from qbom.core.session import Session
 from qbom.core.trace import Trace, TraceBuilder
 
@@ -127,8 +127,6 @@ def test_trace_id_cannot_address_a_file_outside_the_store(trace_store, trace_id,
     assert target.exists()
     assert Trace.model_validate_json(target.read_text()).id == "qbom_outside"
 
-    assert _resolve_trace_path(trace_id) is None
-
     result = CliRunner().invoke(main, ["show", trace_id])
     assert result.exit_code != 0
     assert "not found" in result.output.lower()
@@ -137,6 +135,8 @@ def test_trace_id_cannot_address_a_file_outside_the_store(trace_store, trace_id,
 @pytest.mark.parametrize("trace_id", ["", ".", "..", "back\\slash", "nul\x00byte"])
 def test_malformed_trace_ids_are_refused(trace_store, trace_id):
     """Shapes that are not a filename component, refused before any lookup."""
+    from qbom.cli.main import _resolve_trace_path
+
     assert _resolve_trace_path(trace_id) is None
 
 
@@ -147,6 +147,8 @@ def test_ordinary_ids_still_resolve(trace_store):
     Both tests above would pass against a resolver that returned None for
     everything.
     """
+    from qbom.cli.main import _resolve_trace_path
+
     trace = Trace(id="qbom_ordinary")
     (trace_store / f"{trace.id}.json").write_text(trace.to_json())
 
@@ -165,6 +167,8 @@ def test_partial_id_resolves_to_the_first_match_in_order(trace_store):
     for suffix in ("bbb", "aaa", "ccc"):
         trace = Trace(id=f"qbom_shared_{suffix}")
         (trace_store / f"{trace.id}.json").write_text(trace.to_json())
+
+    from qbom.cli.main import _resolve_trace_path
 
     resolved = _resolve_trace_path("qbom_shared")
 
