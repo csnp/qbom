@@ -19,8 +19,18 @@ console = Console()
 
 
 def _resolve_trace_path(trace_id: str) -> Path | None:
-    """Find the file backing a trace id, accepting a unique prefix."""
+    """
+    Find the file backing a trace id, accepting a unique prefix.
+
+    A trace id is a single filename component. It is joined onto the storage
+    directory, so anything carrying a separator or a parent reference would
+    address a file outside the trace store: `qbom show ../../../etc/hosts`
+    read and attempted to parse that path.
+    """
     from qbom.core.session import Session
+
+    if not trace_id or trace_id in (".", "..") or "/" in trace_id or "\\" in trace_id or "\x00" in trace_id:
+        return None
 
     session = Session.get()
     path = session._storage_path / f"{trace_id}.json"

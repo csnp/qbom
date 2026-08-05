@@ -165,6 +165,12 @@ class QBOMImportFinder(importlib.abc.MetaPathFinder):
         Other QBOM finders are skipped as well as this one. Two of them stacked
         would wrap the loader twice, notify twice, and leave the proxy visible
         as the module's __loader__.
+
+        Exceptions from a finder are deliberately not caught, because
+        importlib does not catch them either. A sandbox that installs a finder
+        raising ImportError to deny a module has to keep denying it with QBOM
+        present; swallowing that here would turn this hook into a way around
+        an import block for the six names it watches.
         """
         for finder in list(sys.meta_path):
             if finder is self or isinstance(finder, QBOMImportFinder):
@@ -172,10 +178,7 @@ class QBOMImportFinder(importlib.abc.MetaPathFinder):
             find_spec = getattr(finder, "find_spec", None)
             if find_spec is None:
                 continue
-            try:
-                spec = find_spec(fullname, path, target)
-            except ImportError:
-                continue
+            spec = find_spec(fullname, path, target)
             if spec is not None:
                 return spec  # type: ignore[no-any-return]
         return None

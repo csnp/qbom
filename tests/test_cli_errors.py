@@ -100,6 +100,60 @@ def test_damaged_trace_file_is_reported(trace_store):
     assert "not a readable QBOM trace" in result.output
 
 
+# Each id here has a real, readable file behind it, so removing the guard makes
+# the resolver find something. An id whose target does not exist would pass
+# whether or not the guard is there, and would prove nothing.
+ESCAPES = [
+    ("../outside", lambda store: store.parent / "outside.json"),
+    ("sub/nested", lambda store: store / "sub" / "nested.json"),
+]
+
+
+@pytest.mark.parametrize("trace_id,target_for", ESCAPES, ids=[e[0] for e in ESCAPES])
+def test_trace_id_cannot_address_a_file_outside_the_store(trace_store, trace_id, target_for):
+    """
+    A trace id is joined onto the storage path, so it must be one component.
+
+    Without this, `qbom show ../../../etc/hosts` read and tried to parse that
+    path.
+    """
+    target = target_for(trace_store)
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text(Trace(id="qbom_outside").to_json())
+
+    # Premise: the path this id names is real and loadable, so a resolver that
+    # walks there succeeds. If this ever stops holding, the test below silently
+    # stops measuring the guard.
+    assert target.exists()
+    assert Trace.model_validate_json(target.read_text()).id == "qbom_outside"
+
+    assert _resolve_trace_path(trace_id) is None
+
+    result = CliRunner().invoke(main, ["show", trace_id])
+    assert result.exit_code != 0
+    assert "not found" in result.output.lower()
+
+
+@pytest.mark.parametrize("trace_id", ["", ".", "..", "back\\slash", "nul\x00byte"])
+def test_malformed_trace_ids_are_refused(trace_store, trace_id):
+    """Shapes that are not a filename component, refused before any lookup."""
+    assert _resolve_trace_path(trace_id) is None
+
+
+def test_ordinary_ids_still_resolve(trace_store):
+    """
+    The complementary case.
+
+    Both tests above would pass against a resolver that returned None for
+    everything.
+    """
+    trace = Trace(id="qbom_ordinary")
+    (trace_store / f"{trace.id}.json").write_text(trace.to_json())
+
+    assert _resolve_trace_path("qbom_ordinary") is not None
+    assert _resolve_trace_path("ordinary") is not None  # partial ids keep working
+
+
 def test_partial_id_resolves_to_the_first_match_in_order(trace_store):
     """
     Two traces sharing a prefix must resolve to the same one on every machine.
