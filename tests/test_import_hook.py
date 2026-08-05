@@ -17,9 +17,11 @@ from __future__ import annotations
 import importlib
 import importlib.util
 import os
+import re
 import subprocess
 import sys
 import textwrap
+from pathlib import Path
 
 import pytest
 
@@ -138,6 +140,36 @@ class TestImportFinder:
         assert finders, "importing qbom must install a QBOMImportFinder"
         # find_spec is the only entry point Python 3.12+ calls.
         assert all(hasattr(f, "find_spec") for f in finders)
+
+
+EXAMPLES = sorted((Path(__file__).resolve().parents[1] / "examples").glob("*.py"))
+
+FRAMEWORK_IMPORT = re.compile(r"^\s*(?:import|from)\s+(qiskit|qiskit_aer|cirq|pennylane)\b", re.MULTILINE)
+QBOM_IMPORT = re.compile(r"^\s*import\s+qbom\b", re.MULTILINE)
+
+
+@pytest.mark.parametrize("example", EXAMPLES, ids=lambda p: p.name)
+def test_example_imports_qbom_before_its_framework(example):
+    """
+    The examples demonstrate the order that used to capture nothing.
+
+    An import sorter reorders `import qbom` below the framework import, which
+    silently converts each example into the order that always worked. Running
+    them would then prove nothing about the defect they exist to cover.
+    `ruff --fix` did exactly this once; hence per-file-ignores in pyproject.toml
+    and this test.
+    """
+    source = example.read_text()
+
+    qbom_at = QBOM_IMPORT.search(source)
+    framework_at = FRAMEWORK_IMPORT.search(source)
+
+    assert qbom_at, f"{example.name} does not import qbom"
+    assert framework_at, f"{example.name} imports no quantum framework"
+    assert qbom_at.start() < framework_at.start(), (
+        f"{example.name} imports {framework_at.group(1)} before qbom, so it "
+        "no longer demonstrates the case the import hook exists for"
+    )
 
 
 DOCUMENTED_ORDER_SCRIPT = textwrap.dedent(

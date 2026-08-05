@@ -85,6 +85,19 @@ ignore = [
     "F841",  # unused variables in incomplete adapter code (TODOs)
 ]
 
+[tool.ruff.lint.per-file-ignores]
+# The examples exist to demonstrate that "import qbom" is the entire API and
+# that it comes before the framework import. Each rule below would rewrite or
+# forbid the thing being demonstrated. tests/test_import_hook.py asserts the
+# order holds, so removing an entry here fails the suite rather than silently
+# changing what the examples prove.
+"examples/*.py" = [
+    "E402",  # import placement is the point of the example
+    "F401",  # `import qbom` has no call site; the import itself is the API
+    "I001",  # sorting moves `import qbom` below the framework, which is the
+             # one order these examples are not demonstrating
+]
+
 [tool.mypy]
 python_version = "3.10"
 strict = false
