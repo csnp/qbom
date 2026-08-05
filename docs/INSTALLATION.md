@@ -11,8 +11,8 @@
 Copy and paste this entire block:
 
 ```bash
-git clone https://github.com/csnp/qramm-qbom.git
-cd qramm-qbom
+git clone https://github.com/csnp/qbom.git
+cd qbom
 pip install -e ".[qiskit]"
 qbom --version
 ```
@@ -83,8 +83,8 @@ This directory is created automatically on first use.
 For contributing to QBOM:
 
 ```bash
-git clone https://github.com/csnp/qramm-qbom.git
-cd qramm-qbom
+git clone https://github.com/csnp/qbom.git
+cd qbom
 
 # Install with dev dependencies and all frameworks
 pip install -e ".[dev,all]"
@@ -104,7 +104,7 @@ ruff check src/qbom
 Pull the latest changes and reinstall:
 
 ```bash
-cd qramm-qbom
+cd qbom
 git pull
 pip install -e ".[qiskit]"
 ```

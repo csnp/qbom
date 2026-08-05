@@ -1,4 +1,4 @@
-# Release smoke test: qramm-qbom
+# Release smoke test: qbom
 
 Manual pre-release walkthrough. Run it before every publish, from a clean
 checkout in a fresh virtualenv, and record the actual output rather than a

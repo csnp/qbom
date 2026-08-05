@@ -4,8 +4,8 @@
 
 *One import. Complete reproducibility. Zero code changes.*
 
-[![CI](https://github.com/csnp/qramm-qbom/actions/workflows/ci.yml/badge.svg)](https://github.com/csnp/qramm-qbom/actions/workflows/ci.yml)
-[![codecov](https://codecov.io/gh/csnp/qramm-qbom/graph/badge.svg)](https://codecov.io/gh/csnp/qramm-qbom)
+[![CI](https://github.com/csnp/qbom/actions/workflows/ci.yml/badge.svg)](https://github.com/csnp/qbom/actions/workflows/ci.yml)
+[![codecov](https://codecov.io/gh/csnp/qbom/graph/badge.svg)](https://codecov.io/gh/csnp/qbom)
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE)
 [![Python](https://img.shields.io/badge/Python-3.10+-green.svg)](https://python.org)
 
@@ -53,8 +53,8 @@ Requires Python 3.10+ ([install Python](https://python.org))
 **Copy and paste this entire block:**
 
 ```bash
-git clone https://github.com/csnp/qramm-qbom.git
-cd qramm-qbom
+git clone https://github.com/csnp/qbom.git
+cd qbom
 pip install -e ".[qiskit]"
 qbom --version
 ```
@@ -335,7 +335,7 @@ Traces are stored in `~/.qbom/traces/`.
 ## Architecture
 
 ```
-qramm-qbom/
+qbom/
 ├── src/qbom/
 │   ├── core/           # Data models, trace builder, session
 │   ├── adapters/       # Qiskit, Cirq, PennyLane hooks
@@ -376,8 +376,8 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
 
 ```bash
 # Development setup
-git clone https://github.com/csnp/qramm-qbom.git
-cd qramm-qbom
+git clone https://github.com/csnp/qbom.git
+cd qbom
 pip install -e ".[dev,all]"
 
 # Run tests
@@ -421,7 +421,7 @@ Copyright 2025 CyberSecurity NonProfit (CSNP)
   title = {QBOM: Quantum Bill of Materials},
   author = {{CyberSecurity NonProfit (CSNP)}},
   year = {2025},
-  url = {https://github.com/csnp/qramm-qbom}
+  url = {https://github.com/csnp/qbom}
 }
 ```
 
@@ -431,6 +431,6 @@ Copyright 2025 CyberSecurity NonProfit (CSNP)
 
 **Built with purpose by [CSNP](https://csnp.org)** — Advancing cybersecurity for everyone
 
-[QRAMM](https://qramm.org) • [CSNP](https://csnp.org) • [Issues](https://github.com/csnp/qramm-qbom/issues)
+[QRAMM](https://qramm.org) • [CSNP](https://csnp.org) • [Issues](https://github.com/csnp/qbom/issues)
 
 </div>

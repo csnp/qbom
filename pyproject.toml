@@ -68,7 +68,7 @@ qbom = "qbom.cli:main"
 
 [project.urls]
 Homepage = "https://github.com/csnp/qbom"
-Documentation = "https://qbom.qramm.org"
+Documentation = "https://github.com/csnp/qbom/tree/main/docs"
 Repository = "https://github.com/csnp/qbom"
 Issues = "https://github.com/csnp/qbom/issues"
 

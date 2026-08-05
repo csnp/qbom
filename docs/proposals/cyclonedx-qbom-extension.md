@@ -345,7 +345,7 @@ https://qbom.csnp.org/schema/qbom-extension-1.0.json
 ## 8. References
 
 1. CycloneDX Specification: https://cyclonedx.org/specification/
-2. QBOM Specification: https://github.com/csnp/qbom/docs/specs/qbom-spec-1.0.json
+2. QBOM Specification: https://github.com/csnp/qbom/blob/main/docs/specs/qbom-spec-1.0.json
 3. QRAMM Framework: https://qramm.org
 4. Qiskit Documentation: https://qiskit.org/documentation/
 5. OpenQASM Specification: https://openqasm.com
