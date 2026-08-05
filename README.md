@@ -62,10 +62,11 @@ qbom --version
 **Framework options:**
 
 ```bash
-pip install -e ".[qiskit]"      # Qiskit support
+pip install -e ".[qiskit]"      # Qiskit support (includes qiskit-aer)
 pip install -e ".[cirq]"        # Cirq support
 pip install -e ".[pennylane]"   # PennyLane support
-pip install -e ".[all]"         # All frameworks
+pip install -e ".[yaml]"        # YAML export
+pip install -e ".[all]"         # Everything above
 ```
 
 ### Basic Usage
@@ -77,7 +78,7 @@ import qbom  # Add this single line - that's it!
 from qiskit import QuantumCircuit
 from qiskit_aer import AerSimulator
 
-qc = QuantumCircuit(2)
+qc = QuantumCircuit(2, name="bell_state")
 qc.h(0)
 qc.cx(0, 1)
 qc.measure_all()
@@ -90,29 +91,45 @@ result = job.result()
 qbom.show()
 ```
 
+Import order does not matter. QBOM installs an import hook, so a framework
+imported after `import qbom` is still captured.
+
 **Output:**
 
 ```
-╭──────────────────────────── QBOM: qbom_c4b17b13 ─────────────────────────────╮
-│ Summary: 2 circuits | on aer_simulator | 4,096 shots                         │
-│ Created: 2025-01-15 14:30:07 UTC                                             │
+╭──────────────────────────── QBOM: qbom_f8b889f7 ─────────────────────────────╮
+│ Summary: 2q circuit | on aer_simulator | 4,096 shots                         │
+│ Created: 2026-08-05 23:13:13 UTC                                             │
+│ Hash: be41da5c7a0a1b82                                                       │
 │                                                                              │
 │ ENVIRONMENT                                                                  │
-│   Python:  3.11.12                                                           │
-│   qiskit: 2.2.3, qiskit-aer: 0.17.2, numpy: 1.26.4                          │
+│   Python:  3.14.3                                                            │
+│   SDK:     qiskit==2.5.1                                                     │
+│   qiskit: 2.5.1                                                              │
+│   qiskit-aer: 0.17.2                                                         │
+│   numpy: 2.5.1                                                               │
+│   scipy: 1.18.0                                                              │
 │                                                                              │
 │ CIRCUIT                                                                      │
-│   Name: bell_state | Qubits: 2 | Depth: 3 | Gates: 5                        │
+│   Name:    bell_state                                                        │
+│   Qubits:  2                                                                 │
+│   Depth:   3                                                                 │
+│   Gates:   5 (1 1q, 1 2q)                                                    │
+│   Hash:    ad3deb49eae5f780                                                  │
 │                                                                              │
 │ HARDWARE                                                                     │
-│   Backend: aer_simulator | Type: Simulator                                   │
+│   Provider: Aer (Local)                                                      │
+│   Backend:  aer_simulator                                                    │
+│   Type:     Simulator                                                        │
 │                                                                              │
 │ EXECUTION                                                                    │
-│   Shots: 4,096                                                               │
+│   Job ID:  b0a26563-e881-4252-841f-96a5b9bc91bc                              │
+│   Shots:   4,096                                                             │
 │                                                                              │
 │ RESULTS                                                                      │
-│   |11⟩ ███████████████░░░░░░░░░░░░░░░  50.8%                                │
-│   |00⟩ ██████████████░░░░░░░░░░░░░░░░  49.2%                                │
+│   |00⟩ ███████████████░░░░░░░░░░░░░░░  50.7%                                 │
+│   |11⟩ ██████████████░░░░░░░░░░░░░░░░  49.3%                                 │
+│                                                                              │
 ╰──────────────────────────────────────────────────────────────────────────────╯
 ```
 
@@ -169,22 +186,26 @@ QBOM calculates a 0-100 score showing how reproducible your experiment is:
 | 0-24 | Critical - cannot reproduce |
 
 ```bash
-$ qbom score qbom_c4b17b13
+$ qbom score qbom_bdbddf3c
 
 ╭─────────────────────────── Reproducibility Score ────────────────────────────╮
 │ 71/100 (Good)                                                                │
-╰──────────────────────────────────────────────────────────────────────────────╯
+╰─────────────────────────────── qbom_bdbddf3c ────────────────────────────────╯
+                     Score Breakdown
+┏━━━━━━━━━━━━━━━┳━━━━━━━━━━━━━━━━━━━━━━━┳━━━━━━━┳━━━━━━━━┓
+┃ Component     ┃ Category              ┃ Score ┃ Status ┃
+┡━━━━━━━━━━━━━━━╇━━━━━━━━━━━━━━━━━━━━━━━╇━━━━━━━╇━━━━━━━━┩
+│ Environment   │ Software              │ 20/20 │ ●      │
+│ Circuit       │ Quantum Program       │ 17/20 │ ◐      │
+│ Transpilation │ Circuit Compilation   │  7/15 │ ◐      │
+│ Hardware      │ Backend & Calibration │  9/25 │ ◐      │
+│ Execution     │ Run Parameters        │ 10/10 │ ●      │
+│ Results       │ Output Verification   │  8/10 │ ●      │
+└───────────────┴───────────────────────┴───────┴────────┘
 
-┏━━━━━━━━━━━━━━━┳━━━━━━━┳━━━━━━━━┓
-┃ Component     ┃ Score ┃ Status ┃
-┡━━━━━━━━━━━━━━━╇━━━━━━━╇━━━━━━━━┩
-│ Environment   │ 20/20 │ ●      │
-│ Circuit       │ 17/20 │ ◐      │
-│ Transpilation │  7/15 │ ◐      │
-│ Hardware      │  9/25 │ ◐      │
-│ Execution     │ 10/10 │ ●      │
-│ Results       │  8/10 │ ●      │
-└───────────────┴───────┴────────┘
+Recommendations:
+  • Consider storing QASM for exact circuit reproduction
+  • Qubit mapping not captured - results depend on physical qubit assignment
 ```
 
 ### Export Formats
@@ -193,7 +214,7 @@ $ qbom score qbom_c4b17b13
 qbom export <id> trace.json              # JSON (default)
 qbom export <id> trace.cdx.json -f cyclonedx   # CycloneDX SBOM
 qbom export <id> trace.spdx.json -f spdx       # SPDX SBOM
-qbom export <id> trace.yaml -f yaml            # YAML
+qbom export <id> trace.yaml -f yaml            # YAML, needs pip install "qbom[yaml]"
 ```
 
 ---

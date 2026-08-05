@@ -38,9 +38,14 @@ trace.show()
 
 # Export for reproducibility
 trace.export("bell_state.qbom.json")
-print(f"\nExported to: bell_state.qbom.json")
+print("\nExported to: bell_state.qbom.json")
 
-# Generate paper statement
-print("\n--- Paper Statement ---")
+# Generate paper statement. It carries formatting, so it needs a rich console;
+# a plain print() shows the markup instead of applying it.
+from rich.console import Console
+
 from qbom.cli.display import generate_paper_statement
-print(generate_paper_statement(trace))
+
+console = Console()
+console.print("\n--- Paper Statement ---")
+console.print(generate_paper_statement(trace))

@@ -7,11 +7,62 @@ Beautiful command-line interface for managing quantum experiment traces.
 from __future__ import annotations
 
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 import click
 from rich.console import Console
 
+if TYPE_CHECKING:
+    from qbom.core.trace import Trace
+
 console = Console()
+
+
+def _resolve_trace_path(trace_id: str) -> Path | None:
+    """Find the file backing a trace id, accepting a unique prefix."""
+    from qbom.core.session import Session
+
+    session = Session.get()
+    path = session._storage_path / f"{trace_id}.json"
+    if path.exists():
+        return path
+
+    # Fall back to a partial id. Sorted so the same input always resolves to
+    # the same trace, whatever order the filesystem hands the entries back.
+    for candidate in sorted(session._storage_path.glob("*.json")):
+        if trace_id in candidate.stem:
+            return candidate
+
+    return None
+
+
+def _load_trace(trace_id: str) -> Trace:
+    """
+    Load a trace or exit non-zero.
+
+    Every command that takes a trace id used to print "Trace not found" and
+    return, which left the exit code at 0 and made the failure invisible to any
+    script or CI step calling qbom.
+    """
+    path = _resolve_trace_path(trace_id)
+    if path is None:
+        raise click.ClickException(f"Trace not found: {trace_id}")
+
+    return _read_trace_file(path)
+
+
+def _read_trace_file(path: Path) -> Trace:
+    """Parse a QBOM file, reporting a damaged one instead of raising."""
+    from qbom.core.trace import Trace
+
+    try:
+        return Trace.model_validate_json(path.read_text())
+    except OSError as exc:
+        raise click.ClickException(f"Could not read {path}: {exc}") from exc
+    except ValueError as exc:
+        raise click.ClickException(
+            f"{path} is not a readable QBOM trace. It may be truncated or from an incompatible version.\n{exc}"
+        ) from exc
 
 
 @click.group()
@@ -49,29 +100,8 @@ def list(limit: int) -> None:
 def show(trace_id: str) -> None:
     """Show detailed view of a trace."""
     from qbom.cli.display import display_trace
-    from qbom.core.session import Session
-    from qbom.core.trace import Trace
 
-    session = Session.get()
-
-    # Find trace
-    trace = None
-    trace_path = session._storage_path / f"{trace_id}.json"
-
-    if trace_path.exists():
-        trace = Trace.model_validate_json(trace_path.read_text())
-    else:
-        # Search by partial ID
-        for path in session._storage_path.glob("*.json"):
-            if trace_id in path.stem:
-                trace = Trace.model_validate_json(path.read_text())
-                break
-
-    if trace is None:
-        console.print(f"[red]Trace not found: {trace_id}[/red]")
-        return
-
-    display_trace(trace)
+    display_trace(_load_trace(trace_id))
 
 
 @main.command()
@@ -93,25 +123,15 @@ def export(trace_id: str, output: str, format: str) -> None:
     - spdx: SPDX 2.3 SBOM with QBOM extension
     - yaml: YAML representation
     """
-    from qbom.core.session import Session
-    from qbom.core.trace import Trace
+    trace = _load_trace(trace_id)
 
-    session = Session.get()
-    trace_path = session._storage_path / f"{trace_id}.json"
+    try:
+        output_path = trace.export(output, format=format)  # type: ignore
+    except ImportError as exc:
+        # An optional serialiser is missing. Say which and how to get it,
+        # rather than ending in a traceback.
+        raise click.ClickException(str(exc)) from exc
 
-    if not trace_path.exists():
-        # Search by partial ID
-        for path in session._storage_path.glob("*.json"):
-            if trace_id in path.stem:
-                trace_path = path
-                break
-
-    if not trace_path.exists():
-        console.print(f"[red]Trace not found: {trace_id}[/red]")
-        return
-
-    trace = Trace.model_validate_json(trace_path.read_text())
-    output_path = trace.export(output, format=format)  # type: ignore
     console.print(f"[green]Exported to:[/green] {output_path}")
 
 
@@ -121,31 +141,8 @@ def export(trace_id: str, output: str, format: str) -> None:
 def diff(trace_id1: str, trace_id2: str) -> None:
     """Compare two traces side by side."""
     from qbom.cli.display import display_diff
-    from qbom.core.session import Session
-    from qbom.core.trace import Trace
 
-    session = Session.get()
-
-    def load_trace(trace_id: str) -> Trace | None:
-        trace_path = session._storage_path / f"{trace_id}.json"
-        if trace_path.exists():
-            return Trace.model_validate_json(trace_path.read_text())
-        for path in session._storage_path.glob("*.json"):
-            if trace_id in path.stem:
-                return Trace.model_validate_json(path.read_text())
-        return None
-
-    trace1 = load_trace(trace_id1)
-    trace2 = load_trace(trace_id2)
-
-    if trace1 is None:
-        console.print(f"[red]Trace not found: {trace_id1}[/red]")
-        return
-    if trace2 is None:
-        console.print(f"[red]Trace not found: {trace_id2}[/red]")
-        return
-
-    display_diff(trace1, trace2)
+    display_diff(_load_trace(trace_id1), _load_trace(trace_id2))
 
 
 @main.command()
@@ -153,25 +150,8 @@ def diff(trace_id1: str, trace_id2: str) -> None:
 def paper(trace_id: str) -> None:
     """Generate reproducibility statement for a paper."""
     from qbom.cli.display import generate_paper_statement
-    from qbom.core.session import Session
-    from qbom.core.trace import Trace
 
-    session = Session.get()
-    trace_path = session._storage_path / f"{trace_id}.json"
-
-    if not trace_path.exists():
-        for path in session._storage_path.glob("*.json"):
-            if trace_id in path.stem:
-                trace_path = path
-                break
-
-    if not trace_path.exists():
-        console.print(f"[red]Trace not found: {trace_id}[/red]")
-        return
-
-    trace = Trace.model_validate_json(trace_path.read_text())
-    statement = generate_paper_statement(trace)
-    console.print(statement)
+    console.print(generate_paper_statement(_load_trace(trace_id)))
 
 
 @main.command()
@@ -179,10 +159,8 @@ def paper(trace_id: str) -> None:
 def verify(path: str) -> None:
     """Verify integrity of a QBOM file."""
     from qbom.cli.display import display_verification
-    from qbom.core.trace import Trace
 
-    trace = Trace.model_validate_json(Path(path).read_text())
-    display_verification(trace, path)
+    display_verification(_read_trace_file(Path(path)), path)
 
 
 @main.command()
@@ -211,23 +189,8 @@ def score(trace_id: str) -> None:
     from rich.table import Table
 
     from qbom.analysis import compute_score
-    from qbom.core.session import Session
-    from qbom.core.trace import Trace
 
-    session = Session.get()
-    trace_path = session._storage_path / f"{trace_id}.json"
-
-    if not trace_path.exists():
-        for path in session._storage_path.glob("*.json"):
-            if trace_id in path.stem:
-                trace_path = path
-                break
-
-    if not trace_path.exists():
-        console.print(f"[red]Trace not found: {trace_id}[/red]")
-        return
-
-    trace = Trace.model_validate_json(trace_path.read_text())
+    trace = _load_trace(trace_id)
     result = compute_score(trace)
 
     # Display score
@@ -290,23 +253,8 @@ def drift(trace_id: str) -> None:
     from rich.table import Table
 
     from qbom.analysis import analyze_drift
-    from qbom.core.session import Session
-    from qbom.core.trace import Trace
 
-    session = Session.get()
-    trace_path = session._storage_path / f"{trace_id}.json"
-
-    if not trace_path.exists():
-        for path in session._storage_path.glob("*.json"):
-            if trace_id in path.stem:
-                trace_path = path
-                break
-
-    if not trace_path.exists():
-        console.print(f"[red]Trace not found: {trace_id}[/red]")
-        return
-
-    trace = Trace.model_validate_json(trace_path.read_text())
+    trace = _load_trace(trace_id)
     result = analyze_drift(trace)
 
     if result is None:
@@ -406,23 +354,8 @@ def validate(trace_id: str, publication: bool) -> None:
     from rich.panel import Panel
 
     from qbom.analysis import ValidationLevel, validate_for_publication, validate_trace
-    from qbom.core.session import Session
-    from qbom.core.trace import Trace
 
-    session = Session.get()
-    trace_path = session._storage_path / f"{trace_id}.json"
-
-    if not trace_path.exists():
-        for path in session._storage_path.glob("*.json"):
-            if trace_id in path.stem:
-                trace_path = path
-                break
-
-    if not trace_path.exists():
-        console.print(f"[red]Trace not found: {trace_id}[/red]")
-        return
-
-    trace = Trace.model_validate_json(trace_path.read_text())
+    trace = _load_trace(trace_id)
 
     if publication:
         result = validate_for_publication(trace)

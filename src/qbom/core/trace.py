@@ -177,7 +177,12 @@ class Trace(BaseModel):
         elif format == "spdx":
             path.write_text(self._to_spdx())
         elif format == "yaml":
-            import yaml  # Optional dependency
+            try:
+                import yaml
+            except ImportError as exc:
+                raise ImportError(
+                    'YAML export needs PyYAML, which is not installed. Install it with: pip install "qbom[yaml]"'
+                ) from exc
 
             path.write_text(yaml.dump(self.to_dict(), default_flow_style=False))
         else:

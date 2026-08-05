@@ -29,6 +29,7 @@ classifiers = [
     "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
     "Topic :: Scientific/Engineering :: Physics",
     "Topic :: Software Development :: Libraries :: Python Modules",
 ]
@@ -41,10 +42,20 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-qiskit = ["qiskit>=1.0.0"]
+# qiskit-aer carries AerSimulator, which README.md and every Qiskit example in
+# examples/ import. Without it the documented walkthrough stops at
+# ModuleNotFoundError.
+qiskit = ["qiskit>=1.0.0", "qiskit-aer>=0.15.0"]
 cirq = ["cirq>=1.0.0"]
 pennylane = ["pennylane>=0.30.0"]
-all = ["qiskit>=1.0.0", "cirq>=1.0.0", "pennylane>=0.30.0"]
+yaml = ["pyyaml>=6.0"]
+all = [
+    "qiskit>=1.0.0",
+    "qiskit-aer>=0.15.0",
+    "cirq>=1.0.0",
+    "pennylane>=0.30.0",
+    "pyyaml>=6.0",
+]
 dev = [
     "pytest>=7.0.0",
     "pytest-cov>=4.0.0",

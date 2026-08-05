@@ -10,31 +10,103 @@ from __future__ import annotations
 
 import atexit
 import importlib
+import importlib.abc
 import platform
 import sys
 import threading
-from collections.abc import Iterator
+import warnings
+from collections.abc import Iterator, Sequence
 from contextlib import contextmanager
 from datetime import datetime
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from qbom.core.models import Environment, Package
 from qbom.core.trace import Trace, TraceBuilder
 
 if TYPE_CHECKING:
+    from importlib.machinery import ModuleSpec
+    from types import ModuleType
+
     from qbom.adapters.base import Adapter
 
 
-class QBOMImportFinder:
+def _notify_framework_imported(framework: str, session: Session | None = None) -> None:
+    """
+    Install or refresh the adapter for a framework that has just been imported.
+
+    A failure here must never break the import that triggered it: the user's
+    experiment matters more than its provenance. It is reported rather than
+    swallowed, so a run without capture is not mistaken for a run with nothing
+    to capture.
+    """
+    try:
+        (session or Session.get())._reinstall_adapter_for(framework)
+    except Exception as exc:
+        warnings.warn(
+            f"QBOM could not install its {framework} adapter after {framework} was "
+            f"imported ({exc!r}). This run will not be captured for that framework.",
+            RuntimeWarning,
+            stacklevel=2,
+        )
+
+
+class _QBOMLoader(importlib.abc.Loader):
+    """
+    Loader proxy that notifies QBOM once the real module has finished executing.
+
+    Everything is delegated to the loader the normal import machinery chose.
+    The only addition is the callback after ``exec_module``, which is the
+    earliest point at which the framework's classes exist and can be hooked.
+    """
+
+    def __init__(self, loader: Any, framework: str, session: Session | None = None) -> None:
+        self._qbom_loader = loader
+        self._qbom_framework = framework
+        self._qbom_session = session
+
+    def create_module(self, spec: ModuleSpec) -> ModuleType | None:
+        return self._qbom_loader.create_module(spec)  # type: ignore[no-any-return]
+
+    def exec_module(self, module: ModuleType) -> None:
+        self._qbom_loader.exec_module(module)
+
+        # Hand the module back to its real loader before anything can inspect
+        # it, so __loader__ and __spec__.loader look exactly as they would
+        # without QBOM installed. Code that calls inspect.getsource() or
+        # isinstance(loader, SourceFileLoader) then behaves unchanged.
+        try:
+            module.__loader__ = self._qbom_loader
+            spec = getattr(module, "__spec__", None)
+            if spec is not None:
+                spec.loader = self._qbom_loader
+        except Exception:
+            pass
+
+        _notify_framework_imported(self._qbom_framework, self._qbom_session)
+
+    def __getattr__(self, name: str) -> Any:
+        # Guard the proxy's own attributes so a lookup before __init__ finishes
+        # raises AttributeError instead of recursing.
+        if name.startswith("_qbom_"):
+            raise AttributeError(name)
+        return getattr(self._qbom_loader, name)
+
+
+class QBOMImportFinder(importlib.abc.MetaPathFinder):
     """
     Import hook to detect when quantum frameworks are imported after QBOM.
 
     This ensures adapters are installed even if qiskit/cirq/pennylane
     are imported after 'import qbom'.
+
+    Only top-level framework packages are wrapped. Submodule imports cost one
+    dictionary lookup and are otherwise ignored, so the adapter is reinstalled
+    exactly once per framework, at the point its ``__init__`` has finished and
+    its classes (``AerBackend``, for instance) exist.
     """
 
-    # Map submodules to their main framework
+    # Map top-level distributions to their main framework
     WATCHED_MODULES = {
         "qiskit": "qiskit",
         "qiskit_aer": "qiskit",  # Part of qiskit ecosystem
@@ -44,35 +116,69 @@ class QBOMImportFinder:
         "pennylane": "pennylane",
     }
 
-    def find_module(self, fullname: str, path: str | None = None) -> QBOMImportFinder | None:
+    def __init__(self, session: Session | None = None) -> None:
+        self._session = session
+        self._resolving: set[str] = set()
+
+    def find_spec(
+        self,
+        fullname: str,
+        path: Sequence[str] | None = None,
+        target: ModuleType | None = None,
+    ) -> ModuleSpec | None:
         """Called when Python tries to import a module."""
-        # Check if this is a quantum framework we care about
-        base_module = fullname.split(".")[0]
-        if base_module in self.WATCHED_MODULES:
-            return self
-        return None
+        if "." in fullname:
+            return None
 
-    def load_module(self, fullname: str) -> object:
-        """Load the module and install our adapter."""
-        # Remove ourselves temporarily to avoid recursion
-        sys.meta_path.remove(self)
+        framework = self.WATCHED_MODULES.get(fullname)
+        if framework is None:
+            return None
 
+        if fullname in self._resolving:
+            return None  # re-entrant call from the delegation below
+
+        self._resolving.add(fullname)
         try:
-            # Import the actual module
-            module = importlib.import_module(fullname)
-
-            # Install/update adapter for this framework
-            base_module = fullname.split(".")[0]
-            framework = self.WATCHED_MODULES.get(base_module)
-            if framework:
-                # Re-install adapter to pick up new classes (like AerBackend)
-                Session.get()._reinstall_adapter_for(framework)
-
-            return module
+            spec = self._find_real_spec(fullname, path, target)
         finally:
-            # Re-add ourselves
-            if self not in sys.meta_path:
-                sys.meta_path.insert(0, self)
+            self._resolving.discard(fullname)
+
+        if spec is None or spec.loader is None:
+            return None
+        if isinstance(spec.loader, _QBOMLoader):
+            return spec  # already wrapped, do not stack another proxy
+        if not hasattr(spec.loader, "exec_module"):
+            return None  # legacy loader, leave it to the normal machinery
+
+        spec.loader = _QBOMLoader(spec.loader, framework, self._session)
+        return spec
+
+    def _find_real_spec(
+        self,
+        fullname: str,
+        path: Sequence[str] | None,
+        target: ModuleType | None,
+    ) -> ModuleSpec | None:
+        """
+        Ask every other meta path finder, in order, for the real spec.
+
+        Other QBOM finders are skipped as well as this one. Two of them stacked
+        would wrap the loader twice, notify twice, and leave the proxy visible
+        as the module's __loader__.
+        """
+        for finder in list(sys.meta_path):
+            if finder is self or isinstance(finder, QBOMImportFinder):
+                continue
+            find_spec = getattr(finder, "find_spec", None)
+            if find_spec is None:
+                continue
+            try:
+                spec = find_spec(fullname, path, target)
+            except ImportError:
+                continue
+            if spec is not None:
+                return spec  # type: ignore[no-any-return]
+        return None
 
 
 class Session:
@@ -93,6 +199,7 @@ class Session:
         self._storage_path = Path.home() / ".qbom" / "traces"
         self._auto_save = True
         self._started = False
+        self._import_finder: QBOMImportFinder | None = None
 
     @classmethod
     def get(cls) -> Session:
@@ -123,7 +230,7 @@ class Session:
         self._current_builder.set_environment(self._capture_environment())
 
         # Install import hook to detect quantum frameworks imported later
-        self._import_finder = QBOMImportFinder()
+        self._import_finder = QBOMImportFinder(self)
         sys.meta_path.insert(0, self._import_finder)
 
         # Install adapters for frameworks already imported
@@ -283,6 +390,14 @@ class Session:
                 adapter.uninstall()
             except Exception:
                 pass
+
+        # Remove the import hook
+        if self._import_finder is not None:
+            try:
+                sys.meta_path.remove(self._import_finder)
+            except ValueError:
+                pass
+            self._import_finder = None
 
     # ========================================================================
     # Context Manager for Scoped Experiments

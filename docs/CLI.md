@@ -278,7 +278,7 @@ qbom export qbom_c4b17b13 trace.cdx.json -f cyclonedx
 # Export as SPDX SBOM
 qbom export qbom_c4b17b13 trace.spdx.json -f spdx
 
-# Export as YAML
+# Export as YAML. Needs PyYAML: pip install "qbom[yaml]"
 qbom export qbom_c4b17b13 trace.yaml -f yaml
 ```
 
