@@ -19,6 +19,8 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta
 from typing import TYPE_CHECKING
 
+from qbom.core.timeutil import as_utc, utc_now
+
 if TYPE_CHECKING:
     from qbom.core.models import Calibration
     from qbom.core.trace import Trace
@@ -178,7 +180,10 @@ def analyze_drift(
 
     # If no current calibration provided, show what we have
     if not current_calibration:
-        age = datetime.utcnow() - original_cal.timestamp
+        # as_utc reads a stored timestamp as UTC. Traces written before
+        # timestamps carried an offset store a naive value, and subtracting
+        # one of those from the current time would otherwise raise.
+        age = utc_now() - as_utc(original_cal.timestamp)
         days_old = age.days
 
         if days_old > 7:
@@ -208,7 +213,9 @@ def analyze_drift(
         )
 
     # Full comparison
-    time_elapsed = current_calibration.timestamp - original_cal.timestamp
+    # The original comes from a trace file and the current one is usually
+    # fetched from the backend now, so the two can differ in kind.
+    time_elapsed = as_utc(current_calibration.timestamp) - as_utc(original_cal.timestamp)
 
     # Analyze qubit drift
     qubit_drift = []
@@ -351,8 +358,11 @@ def explain_result_difference(
 
         # Calibration time difference
         if trace1.hardware.calibration and trace2.hardware.calibration:
+            # Either trace may predate offsets being written, so read both as UTC.
             time_diff = abs(
-                (trace2.hardware.calibration.timestamp - trace1.hardware.calibration.timestamp).total_seconds()
+                (
+                    as_utc(trace2.hardware.calibration.timestamp) - as_utc(trace1.hardware.calibration.timestamp)
+                ).total_seconds()
             )
             if time_diff > 86400:  # More than 1 day
                 days = time_diff / 86400

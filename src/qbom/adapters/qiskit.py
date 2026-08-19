@@ -13,7 +13,6 @@ from __future__ import annotations
 import functools
 import hashlib
 from collections.abc import Callable
-from datetime import datetime
 from typing import TYPE_CHECKING, Any
 
 from qbom.adapters.base import Adapter
@@ -30,6 +29,7 @@ from qbom.core.models import (
     Result,
     Transpilation,
 )
+from qbom.core.timeutil import utc_now
 
 if TYPE_CHECKING:
     from qbom.core.session import Session
@@ -114,7 +114,7 @@ def _capture_calibration(backend: Any) -> Calibration | None:
         if props is None:
             return None
 
-        timestamp = props.last_update_date or datetime.utcnow()
+        timestamp = props.last_update_date or utc_now()
 
         # Capture qubit properties
         qubits = []
@@ -301,7 +301,7 @@ class QiskitAdapter(Adapter):
                     job_id = str(id(job))
 
                 adapter._pending_job_data[job_id] = {
-                    "submitted_at": datetime.utcnow(),
+                    "submitted_at": utc_now(),
                     "shots": kwargs.get("shots", 4096),
                     "backend": self_backend,
                 }
@@ -387,7 +387,7 @@ class QiskitAdapter(Adapter):
             job_id=job_id,
             shots=job_data.get("shots", 4096),
             submitted_at=job_data.get("submitted_at"),
-            completed_at=datetime.utcnow(),
+            completed_at=utc_now(),
         )
         builder.set_execution(execution)
 

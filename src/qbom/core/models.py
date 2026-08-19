@@ -12,6 +12,8 @@ from typing import Any
 
 from pydantic import BaseModel, Field, computed_field
 
+from qbom.core.timeutil import as_utc, utc_now
+
 
 class QBOMModel(BaseModel):
     """Base model with sensible defaults."""
@@ -45,7 +47,7 @@ class Environment(QBOMModel):
     python: str = Field(description="Python version")
     platform: str = Field(description="OS and architecture")
     packages: list[Package] = Field(default_factory=list)
-    timestamp: datetime = Field(default_factory=datetime.utcnow)
+    timestamp: datetime = Field(default_factory=utc_now)
 
     @computed_field
     @property
@@ -235,7 +237,9 @@ class Execution(QBOMModel):
     def queue_time_seconds(self) -> float | None:
         """Time spent waiting in queue."""
         if self.submitted_at and self.started_at:
-            return (self.started_at - self.submitted_at).total_seconds()
+            # Read as UTC first: one value may come from a trace written
+            # before timestamps carried an offset.
+            return (as_utc(self.started_at) - as_utc(self.submitted_at)).total_seconds()
         return None
 
     @computed_field
@@ -243,7 +247,7 @@ class Execution(QBOMModel):
     def execution_time_seconds(self) -> float | None:
         """Actual execution time."""
         if self.started_at and self.completed_at:
-            return (self.completed_at - self.started_at).total_seconds()
+            return (as_utc(self.completed_at) - as_utc(self.started_at)).total_seconds()
         return None
 
 

@@ -12,7 +12,6 @@ from __future__ import annotations
 
 import functools
 import hashlib
-from datetime import datetime
 from typing import TYPE_CHECKING, Any
 
 from qbom.adapters.base import Adapter
@@ -24,6 +23,7 @@ from qbom.core.models import (
     Hardware,
     Result,
 )
+from qbom.core.timeutil import utc_now
 
 if TYPE_CHECKING:
     from qbom.core.session import Session
@@ -190,12 +190,12 @@ class CirqAdapter(Adapter):
                 builder.set_hardware(hardware)
 
                 # Capture execution params
-                submitted_at = datetime.utcnow()
+                submitted_at = utc_now()
 
                 # Run original
                 result = original_run(self_sim, program, param_resolver, repetitions, **kwargs)
 
-                completed_at = datetime.utcnow()
+                completed_at = utc_now()
 
                 # Capture execution
                 execution = Execution(
@@ -260,7 +260,7 @@ class CirqAdapter(Adapter):
                 # For state vector simulation, we capture the final state
                 execution = Execution(
                     shots=1,  # State vector is a single "shot"
-                    completed_at=datetime.utcnow(),
+                    completed_at=utc_now(),
                 )
                 builder.set_execution(execution)
 
@@ -304,9 +304,9 @@ class CirqAdapter(Adapter):
                     )
                     builder.set_hardware(hardware)
 
-                    submitted_at = datetime.utcnow()
+                    submitted_at = utc_now()
                     result = original_run(self_sim, program, param_resolver, repetitions, **kwargs)
-                    completed_at = datetime.utcnow()
+                    completed_at = utc_now()
 
                     execution = Execution(
                         shots=repetitions,

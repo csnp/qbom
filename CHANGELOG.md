@@ -9,6 +9,21 @@ this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- **Every timestamp was recorded without saying which zone it was in.** Capture
+  called `datetime.utcnow()`, which returns a value carrying no UTC offset and
+  which Python 3.12 deprecated. Anyone reading a trace had to know by
+  convention that the value was UTC rather than local time, and on Python 3.12
+  and newer a capture emitted `DeprecationWarning: datetime.datetime.utcnow()
+  is deprecated`. Timestamps QBOM stamps are now timezone-aware UTC. A
+  timestamp with no offset, which is what every trace written by an earlier
+  release contains, is read as UTC at the point it is compared, so `qbom drift`
+  still reports on traces already on disk instead of ending in `TypeError:
+  can't subtract offset-naive and offset-aware datetimes`. A timestamp sitting
+  within one UTC offset of the earliest or latest datetime Python can hold
+  cannot be moved to UTC without leaving that range, so it is compared in the
+  offset it already carries rather than raising `OverflowError`. Such a file
+  was readable before this change and stays readable.
+
 - **Nothing was captured on Python 3.12 and newer.** `QBOMImportFinder`
   implemented `find_module()` and `load_module()`, an API Python 3.12 removed.
   The finder sat in `sys.meta_path` and was never consulted, so a framework
@@ -44,6 +59,12 @@ this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- Timestamps in exported traces now carry a UTC offset. A field that read
+  `"created_at": "2026-08-19T21:48:41.891059"` now reads `"created_at":
+  "2026-08-19T21:48:41.891059+00:00"`. The instant is the same and the trace
+  content hash does not move, because it never covered timestamps. A trace
+  written by an earlier release is not rewritten when it is read: its
+  timestamps stay exactly as they are on disk, without an offset.
 - README and docs sample output regenerated from an actual run. The previous
   samples predated several output changes.
 - CI runs on Python 3.13 as well as 3.10 to 3.12.
