@@ -23,6 +23,7 @@ from qbom.core.models import (
     Result,
     Transpilation,
 )
+from qbom.core.timeutil import utc_now
 
 
 def _generate_id() -> str:
@@ -72,7 +73,7 @@ class Trace(BaseModel):
     # Identity
     id: str = Field(default_factory=_generate_id)
     qbom_version: str = "1.0"
-    created_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=utc_now)
 
     # Core components
     environment: Environment | None = None

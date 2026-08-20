@@ -12,7 +12,6 @@ from __future__ import annotations
 
 import functools
 import hashlib
-from datetime import datetime
 from typing import TYPE_CHECKING, Any
 
 from qbom.adapters.base import Adapter
@@ -24,6 +23,7 @@ from qbom.core.models import (
     Hardware,
     Result,
 )
+from qbom.core.timeutil import utc_now
 
 if TYPE_CHECKING:
     from qbom.core.session import Session
@@ -199,12 +199,12 @@ class PennyLaneAdapter(Adapter):
                 hardware = _extract_device_info(device)
                 builder.set_hardware(hardware)
 
-                submitted_at = datetime.utcnow()
+                submitted_at = utc_now()
 
                 # Execute original
                 result = original_call(self_qnode, *args, **kwargs)
 
-                completed_at = datetime.utcnow()
+                completed_at = utc_now()
 
                 # Try to extract circuit info from the tape
                 try:
@@ -318,12 +318,12 @@ class PennyLaneAdapter(Adapter):
                     except Exception:
                         pass
 
-                submitted_at = datetime.utcnow()
+                submitted_at = utc_now()
 
                 # Execute original
                 result = original_execute(tapes, device, *args, **kwargs)
 
-                completed_at = datetime.utcnow()
+                completed_at = utc_now()
 
                 # Get shots
                 shots = getattr(device, "shots", None)
