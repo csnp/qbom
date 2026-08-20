@@ -12,9 +12,11 @@ from __future__ import annotations
 
 import functools
 import hashlib
+from datetime import datetime
 from typing import TYPE_CHECKING, Any
 
-from qbom.adapters.base import Adapter
+from qbom.adapters.base import Adapter, capture_guard
+from qbom.core.hashing import result_hash
 from qbom.core.models import (
     Circuit,
     Counts,
@@ -123,14 +125,21 @@ def _extract_device_info(device: Any) -> Hardware:
 
 
 def _process_result(result: Any, shots: int | None) -> tuple[Counts | None, str]:
-    """Process PennyLane result into counts if applicable."""
+    """
+    Process PennyLane result into counts if applicable.
+
+    A counts result is hashed by the same function every adapter uses, so
+    `qbom verify` can recompute it from the stored counts. A result that is not
+    counts, an expectation value for instance, is hashed over a value the trace
+    does not store, and verification reports that hash as one it could not
+    recompute rather than as one it checked.
+    """
     try:
         # If result is a dictionary of counts (from qml.counts())
         if isinstance(result, dict):
             counts_dict = {str(k): int(v) for k, v in result.items()}
             total_shots = sum(counts_dict.values())
-            result_hash = hashlib.sha256(str(sorted(counts_dict.items())).encode()).hexdigest()[:16]
-            return Counts(raw=counts_dict, shots=total_shots), result_hash
+            return Counts(raw=counts_dict, shots=total_shots), result_hash(counts_dict)
 
         # If result is a numpy array or similar
         if hasattr(result, "tolist"):
@@ -138,10 +147,8 @@ def _process_result(result: Any, shots: int | None) -> tuple[Counts | None, str]
         else:
             result_str = str(result)
 
-        result_hash = hashlib.sha256(result_str.encode()).hexdigest()[:16]
-
         # For expectation values, we don't have counts
-        return None, result_hash
+        return None, hashlib.sha256(result_str.encode()).hexdigest()[:16]
 
     except Exception:
         return None, hashlib.sha256(b"unknown").hexdigest()[:16]
@@ -192,63 +199,15 @@ class PennyLaneAdapter(Adapter):
 
             @functools.wraps(original_call)
             def wrapped_call(self_qnode: Any, *args: Any, **kwargs: Any) -> Any:
-                builder = adapter.session.current_builder
-
-                # Capture device info
-                device = self_qnode.device
-                hardware = _extract_device_info(device)
-                builder.set_hardware(hardware)
-
                 submitted_at = utc_now()
 
-                # Execute original
+                with capture_guard(adapter.name, "QNode call device"):
+                    adapter.session.current_builder.set_hardware(_extract_device_info(self_qnode.device))
+
                 result = original_call(self_qnode, *args, **kwargs)
 
-                completed_at = utc_now()
-
-                # Try to extract circuit info from the tape
-                try:
-                    if hasattr(self_qnode, "tape") and self_qnode.tape is not None:
-                        circuit = _extract_circuit_info(self_qnode.tape)
-                        builder.add_circuit(circuit)
-                    elif hasattr(self_qnode, "qtape") and self_qnode.qtape is not None:
-                        circuit = _extract_circuit_info(self_qnode.qtape)
-                        builder.add_circuit(circuit)
-                except Exception:
-                    pass
-
-                # Get shots from device
-                shots = getattr(device, "shots", None)
-                if isinstance(shots, int):
-                    num_shots = shots
-                elif shots is not None:
-                    num_shots = shots.total_shots if hasattr(shots, "total_shots") else 1
-                else:
-                    num_shots = 1
-
-                # Capture execution
-                execution = Execution(
-                    shots=num_shots,
-                    submitted_at=submitted_at,
-                    completed_at=completed_at,
-                )
-                builder.set_execution(execution)
-
-                # Process result
-                counts, result_hash = _process_result(result, num_shots)
-                if counts:
-                    qbom_result = Result(counts=counts, hash=result_hash)
-                else:
-                    # For expectation values, create a minimal result
-                    qbom_result = Result(
-                        counts=Counts(raw={}, shots=num_shots),
-                        hash=result_hash,
-                        metadata={"type": "expectation_value", "value": str(result)},
-                    )
-                builder.set_result(qbom_result)
-
-                # Finalize trace
-                adapter.session.finalize_trace()
+                with capture_guard(adapter.name, "QNode call result"):
+                    adapter._capture_qnode_result(self_qnode, result, submitted_at)
 
                 return result
 
@@ -261,6 +220,51 @@ class PennyLaneAdapter(Adapter):
         except Exception:
             pass
 
+    def _capture_qnode_result(self, qnode: Any, result: Any, submitted_at: datetime) -> None:
+        """Record the tape, the shot count and the result of a QNode call."""
+        builder = self.session.current_builder
+        completed_at = utc_now()
+
+        # A QNode does not always expose a tape, and reading it is the part of
+        # this most likely to move between PennyLane releases. Losing the
+        # circuit must not also lose the execution and the result below.
+        try:
+            tape = getattr(qnode, "tape", None) or getattr(qnode, "qtape", None)
+            if tape is not None:
+                builder.add_circuit(_extract_circuit_info(tape))
+        except Exception:
+            pass
+
+        # Shots live on the device, as an int on older releases and as a Shots
+        # object on newer ones.
+        shots = getattr(qnode.device, "shots", None)
+        if isinstance(shots, int):
+            num_shots = shots
+        elif shots is not None:
+            num_shots = shots.total_shots if hasattr(shots, "total_shots") else 1
+        else:
+            num_shots = 1
+
+        builder.set_execution(
+            Execution(shots=num_shots, submitted_at=submitted_at, completed_at=completed_at),
+        )
+
+        counts, recorded_hash = _process_result(result, num_shots)
+        if counts:
+            builder.set_result(Result(counts=counts, hash=recorded_hash))
+        else:
+            # An expectation value is not counts. The hash covers the value
+            # itself, which is kept in metadata rather than in counts.
+            builder.set_result(
+                Result(
+                    counts=Counts(raw={}, shots=num_shots),
+                    hash=recorded_hash,
+                    metadata={"type": "expectation_value", "value": str(result)},
+                )
+            )
+
+        self.session.finalize_trace()
+
     def _hook_device_creation(self, qml: Any) -> None:
         """Hook device creation to track active devices."""
         try:
@@ -271,8 +275,8 @@ class PennyLaneAdapter(Adapter):
             def wrapped_device(name: str, *args: Any, **kwargs: Any) -> Any:
                 device = original_device(name, *args, **kwargs)
 
-                # Store device info for later reference
-                adapter._active_devices[id(device)] = _extract_device_info(device)
+                with capture_guard(adapter.name, "device creation"):
+                    adapter._active_devices[id(device)] = _extract_device_info(device)
 
                 return device
 
@@ -297,55 +301,44 @@ class PennyLaneAdapter(Adapter):
                 *args: Any,
                 **kwargs: Any,
             ) -> Any:
-                builder = adapter.session.current_builder
-
-                # Capture device
-                hardware = _extract_device_info(device)
-                builder.set_hardware(hardware)
-
-                # Capture circuits from tapes
-                if isinstance(tapes, (list, tuple)):
-                    for tape in tapes:
-                        try:
-                            circuit = _extract_circuit_info(tape)
-                            builder.add_circuit(circuit)
-                        except Exception:
-                            pass
-                else:
-                    try:
-                        circuit = _extract_circuit_info(tapes)
-                        builder.add_circuit(circuit)
-                    except Exception:
-                        pass
-
                 submitted_at = utc_now()
 
-                # Execute original
+                with capture_guard(adapter.name, "execute input"):
+                    builder = adapter.session.current_builder
+                    builder.set_hardware(_extract_device_info(device))
+
+                    for tape in tapes if isinstance(tapes, (list, tuple)) else [tapes]:
+                        try:
+                            builder.add_circuit(_extract_circuit_info(tape))
+                        except Exception:
+                            pass
+
                 result = original_execute(tapes, device, *args, **kwargs)
 
-                completed_at = utc_now()
+                with capture_guard(adapter.name, "execute result"):
+                    builder = adapter.session.current_builder
 
-                # Get shots
-                shots = getattr(device, "shots", None)
-                num_shots = shots if isinstance(shots, int) else 1
+                    shots = getattr(device, "shots", None)
+                    num_shots = shots if isinstance(shots, int) else 1
 
-                execution = Execution(
-                    shots=num_shots,
-                    submitted_at=submitted_at,
-                    completed_at=completed_at,
-                )
-                builder.set_execution(execution)
+                    builder.set_execution(
+                        Execution(
+                            shots=num_shots,
+                            submitted_at=submitted_at,
+                            completed_at=utc_now(),
+                        )
+                    )
 
-                # Process result
-                _, result_hash = _process_result(result, num_shots)
-                qbom_result = Result(
-                    counts=Counts(raw={}, shots=num_shots),
-                    hash=result_hash,
-                    metadata={"type": "batch_execution"},
-                )
-                builder.set_result(qbom_result)
+                    _, recorded_hash = _process_result(result, num_shots)
+                    builder.set_result(
+                        Result(
+                            counts=Counts(raw={}, shots=num_shots),
+                            hash=recorded_hash,
+                            metadata={"type": "batch_execution"},
+                        )
+                    )
 
-                adapter.session.finalize_trace()
+                    adapter.session.finalize_trace()
 
                 return result
 

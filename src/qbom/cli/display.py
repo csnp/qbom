@@ -6,6 +6,7 @@ Beautiful terminal output using Rich.
 
 from __future__ import annotations
 
+from pathlib import Path
 from typing import TYPE_CHECKING
 
 from rich import box
@@ -119,6 +120,10 @@ def display_trace(trace: Trace) -> None:
         content.append(f"  Backend:  {h.backend}")
         if h.is_simulator:
             content.append("  Type:     Simulator")
+        elif h.num_qubits is None:
+            # A backend does not have to report a qubit count. Say so rather
+            # than printing "None total".
+            content.append(f"  Qubits:   {len(h.qubits_used)} used, total not reported by the backend")
         else:
             content.append(f"  Qubits:   {h.num_qubits} total, {len(h.qubits_used)} used")
 
@@ -253,6 +258,9 @@ def generate_paper_statement(trace: Trace) -> str:
         h = trace.hardware
         if h.is_simulator:
             target = f"the {h.backend} simulator"
+        elif h.num_qubits is None:
+            # Nothing recorded a qubit count, so the statement does not claim one.
+            target = f"the {h.provider} {h.backend} quantum processor"
         else:
             target = f"the {h.provider} {h.backend} quantum processor ({h.num_qubits} qubits)"
         opening.append(f"on {target}" if opening else f"Experiments were performed on {target}")
@@ -291,37 +299,45 @@ def generate_paper_statement(trace: Trace) -> str:
     return "\n".join(parts)
 
 
-def display_verification(trace: Trace, path: str) -> None:
-    """Display verification results."""
+def display_verification(path: Path) -> bool:
+    """
+    Print what could be established about a QBOM file, and what could not.
+
+    Every line says what was checked and what came of it. A line marked "?" is
+    a check that could not run: it establishes nothing and is not counted as a
+    pass.
+
+    Returns:
+        True when no check failed, so the caller can set the exit code.
+    """
+    from qbom.core.verification import FAILED, PASSED, verify_file
+
+    report = verify_file(path)
+
     console.print("[bold]QBOM Verification[/bold]\n")
 
-    checks = []
-
-    # Format valid
-    checks.append(("QBOM format valid", True))
-
-    # Circuit hash
-    if trace.circuits:
-        # We'd need the original circuit to verify, so just show it exists
-        checks.append(("Circuit hash present", True))
-
-    # Result hash
-    if trace.result:
-        checks.append(("Result hash present", True))
-
-    # Timestamps
-    if trace.created_at:
-        checks.append(("Timestamps consistent", True))
-
-    # Display checks
-    for name, passed in checks:
-        icon = "✓" if passed else "✗"
-        color = "green" if passed else "red"
-        console.print(f"  [{color}]{icon}[/{color}] {name}")
+    markers = {PASSED: ("green", "✓"), FAILED: ("red", "✗")}
+    for check in report.checks:
+        color, icon = markers.get(check.status, ("yellow", "?"))
+        console.print(f"  [{color}]{icon}[/{color}] {check.name}: {check.detail}")
 
     console.print("")
 
-    if all(passed for _, passed in checks):
-        console.print("[green bold]VERDICT: QBOM appears authentic and complete[/green bold]")
-    else:
-        console.print("[red bold]VERDICT: QBOM verification failed[/red bold]")
+    if not report.ok:
+        failed = ", ".join(check.name for check in report.failures)
+        console.print(f"[red bold]VERDICT: verification failed ({failed})[/red bold]")
+        return False
+
+    console.print("[green bold]VERDICT: every hash this file records matches the content it carries[/green bold]")
+
+    # What a matching hash does not say. A trace is self-describing, so
+    # verification bounds editing after the fact, not what the run did.
+    if report.trace is not None and report.trace.circuits:
+        console.print(
+            "[dim]A circuit hash is taken from the framework's own circuit object, which the trace "
+            "does not store, so an individual circuit body is not independently checked.[/dim]"
+        )
+    if report.unchecked:
+        console.print("[dim]Unchecked entries above were not established either way.[/dim]")
+
+    return True

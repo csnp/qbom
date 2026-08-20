@@ -167,10 +167,16 @@ def paper(trace_id: str) -> None:
 @main.command()
 @click.argument("path", type=click.Path(exists=True))
 def verify(path: str) -> None:
-    """Verify integrity of a QBOM file."""
+    """Check a QBOM file against the hashes it records.
+
+    Exits 0 when every recorded hash matches the content the file carries, and
+    1 when one does not or the file is not a QBOM trace, so a CI step can gate
+    on the result.
+    """
     from qbom.cli.display import display_verification
 
-    display_verification(_read_trace_file(Path(path)), path)
+    if not display_verification(Path(path)):
+        raise SystemExit(1)
 
 
 @main.command()

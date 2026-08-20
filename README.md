@@ -25,7 +25,7 @@ Quantum computing experiments are notoriously difficult to reproduce. When a pap
 
 **The challenge?** You can't reproduce what you can't document.
 
-QBOM solves this by automatically capturing complete experiment provenance—with zero code changes required.
+QBOM solves this by automatically capturing complete experiment provenance, with zero code changes required.
 
 ---
 
@@ -242,7 +242,7 @@ qbom diff <id1> <id2>         Compare two traces
 qbom drift <id>               Analyze calibration drift
 qbom export <id> <file>       Export to file
 qbom paper <id>               Generate paper statement
-qbom verify <file>            Verify trace integrity
+qbom verify <file>            Check a file against the hashes it records
 ```
 
 #### `qbom list` - View Recent Traces
@@ -305,7 +305,7 @@ qbom.show()
 # Get trace object
 trace = qbom.current()
 print(trace.environment.packages)
-print(trace.hardware.backend_name)
+print(trace.hardware.backend)
 
 # Export
 qbom.export("experiment.json")
@@ -408,7 +408,7 @@ QBOM is part of the [QRAMM](https://qramm.org) (Quantum Readiness Assurance Matu
 
 ## License
 
-Apache License 2.0 — see [LICENSE](LICENSE) for details.
+Apache License 2.0. See [LICENSE](LICENSE) for details.
 
 Copyright 2025 CyberSecurity NonProfit (CSNP)
 
@@ -429,7 +429,7 @@ Copyright 2025 CyberSecurity NonProfit (CSNP)
 
 <div align="center">
 
-**Built with purpose by [CSNP](https://csnp.org)** — Advancing cybersecurity for everyone
+**Built with purpose by [CSNP](https://csnp.org)**. Advancing cybersecurity for everyone
 
 [QRAMM](https://qramm.org) • [CSNP](https://csnp.org) • [Issues](https://github.com/csnp/qbom/issues)
 

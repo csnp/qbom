@@ -102,12 +102,15 @@ A quantum computing company needs to:
 ### The Solution
 
 ```bash
-# Export to standard SBOM formats
+# Export the trace itself, then to standard SBOM formats
+qbom export qbom_prod_run_123 audit/experiment.qbom.json
 qbom export qbom_prod_run_123 audit/experiment.cdx.json -f cyclonedx
 qbom export qbom_prod_run_123 audit/experiment.spdx.json -f spdx
 
-# Verify integrity
-qbom verify audit/experiment.cdx.json
+# Verify integrity. This reads the QBOM trace, not the SBOM: the hashes are
+# recomputed from the counts and content the trace records, which an SBOM
+# export does not carry.
+qbom verify audit/experiment.qbom.json
 ```
 
 **CycloneDX output integrates with:**

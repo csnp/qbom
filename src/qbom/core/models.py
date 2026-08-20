@@ -195,7 +195,16 @@ class Hardware(QBOMModel):
 
     provider: str = Field(description="Provider name (e.g., 'IBM Quantum', 'Google', 'AWS')")
     backend: str = Field(description="Backend name")
-    num_qubits: int
+    # Null where the backend does not report a qubit count. Qiskit's
+    # BasicSimulator is unbounded and its BackendV2.num_qubits is None, so
+    # requiring an int here made capturing that backend raise ValidationError
+    # into the caller's transpile().
+    #
+    # The default matters as much as the type. Trace.to_json() serialises with
+    # exclude_none=True, so a null qubit count is dropped from the file. Without
+    # a default the field is still required on the way back in, and the trace
+    # QBOM had just written could never be loaded again.
+    num_qubits: int | None = Field(default=None, description="Backend qubit count, if the backend reports one")
     qubits_used: list[int] = Field(default_factory=list)
     is_simulator: bool = False
     calibration: Calibration | None = None

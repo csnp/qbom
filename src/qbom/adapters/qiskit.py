@@ -15,7 +15,8 @@ import hashlib
 from collections.abc import Callable
 from typing import TYPE_CHECKING, Any
 
-from qbom.adapters.base import Adapter
+from qbom.adapters.base import Adapter, capture_guard
+from qbom.core.hashing import result_hash
 from qbom.core.models import (
     Calibration,
     Circuit,
@@ -202,43 +203,48 @@ class QiskitAdapter(Adapter):
 
         @functools.wraps(original)
         def wrapper(circuits: Any, backend: Any = None, **kwargs: Any) -> Any:
-            # Capture input
-            builder = self.session.current_builder
-            is_list = isinstance(circuits, list)
-            input_circuits = circuits if is_list else [circuits]
+            with capture_guard(self.name, "transpile input"):
+                self._capture_transpile_input(circuits)
 
-            # Capture input circuits
-            for qc in input_circuits:
-                builder.add_circuit(_circuit_to_model(qc, "input"))
-
-            # Call original
             result = original(circuits, backend, **kwargs)
 
-            # Capture output
-            output_circuits = result if is_list else [result]
-            output = output_circuits[0] if output_circuits else None
-
-            # Build transpilation record
-            transpilation = Transpilation(
-                optimization_level=kwargs.get("optimization_level"),
-                basis_gates=kwargs.get("basis_gates"),
-                seed=kwargs.get("seed_transpiler"),
-                layout_method=kwargs.get("layout_method"),
-                routing_method=kwargs.get("routing_method"),
-                initial_layout=_extract_layout(kwargs.get("initial_layout")),
-                final_layout=_extract_layout(getattr(output, "_layout", None)) if output else None,
-                input_circuit=_circuit_to_model(input_circuits[0]) if input_circuits else None,
-                output_circuit=_circuit_to_model(output) if output else None,
-            )
-            builder.set_transpilation(transpilation)
-
-            # Capture backend info
-            if backend is not None:
-                self._capture_backend(backend)
+            with capture_guard(self.name, "transpile"):
+                self._capture_transpile_output(circuits, backend, result, kwargs)
 
             return result
 
         return wrapper
+
+    def _capture_transpile_input(self, circuits: Any) -> None:
+        """Record the circuits handed to transpile(), before it runs."""
+        builder = self.session.current_builder
+        input_circuits = circuits if isinstance(circuits, list) else [circuits]
+        for qc in input_circuits:
+            builder.add_circuit(_circuit_to_model(qc, "input"))
+
+    def _capture_transpile_output(self, circuits: Any, backend: Any, result: Any, kwargs: dict[str, Any]) -> None:
+        """Record what transpile() produced and the backend it targeted."""
+        builder = self.session.current_builder
+        is_list = isinstance(circuits, list)
+        input_circuits = circuits if is_list else [circuits]
+        output_circuits = result if is_list else [result]
+        output = output_circuits[0] if output_circuits else None
+
+        transpilation = Transpilation(
+            optimization_level=kwargs.get("optimization_level"),
+            basis_gates=kwargs.get("basis_gates"),
+            seed=kwargs.get("seed_transpiler"),
+            layout_method=kwargs.get("layout_method"),
+            routing_method=kwargs.get("routing_method"),
+            initial_layout=_extract_layout(kwargs.get("initial_layout")),
+            final_layout=_extract_layout(getattr(output, "_layout", None)) if output else None,
+            input_circuit=_circuit_to_model(input_circuits[0]) if input_circuits else None,
+            output_circuit=_circuit_to_model(output) if output else None,
+        )
+        builder.set_transpilation(transpilation)
+
+        if backend is not None:
+            self._capture_backend(backend)
 
     def _capture_backend(self, backend: Any) -> None:
         """Capture backend information."""
@@ -284,38 +290,16 @@ class QiskitAdapter(Adapter):
 
             @functools.wraps(original_run)
             def wrapped_run(self_backend: Any, *args: Any, **kwargs: Any) -> Any:
-                # Capture circuit if passed as first arg
-                circuits = args[0] if args else kwargs.get("circuits")
-                if circuits is not None:
-                    adapter._capture_circuits_from_run(circuits)
-
-                # Capture backend info
-                adapter._capture_backend(self_backend)
+                with capture_guard(adapter.name, "backend.run"):
+                    circuits = args[0] if args else kwargs.get("circuits")
+                    if circuits is not None:
+                        adapter._capture_circuits_from_run(circuits)
+                    adapter._capture_backend(self_backend)
 
                 job = original_run(self_backend, *args, **kwargs)
 
-                # Store job metadata for later capture
-                try:
-                    job_id = job.job_id()
-                except Exception:
-                    job_id = str(id(job))
-
-                adapter._pending_job_data[job_id] = {
-                    "submitted_at": utc_now(),
-                    "shots": kwargs.get("shots", 4096),
-                    "backend": self_backend,
-                }
-
-                # Hook job.result()
-                original_result = job.result
-
-                @functools.wraps(original_result)
-                def wrapped_result(*result_args: Any, **result_kwargs: Any) -> Any:
-                    result = original_result(*result_args, **result_kwargs)
-                    adapter._capture_result(job, result, job_id)
-                    return result
-
-                job.result = wrapped_result
+                with capture_guard(adapter.name, "job submission"):
+                    adapter._watch_job(job, self_backend, kwargs)
 
                 return job
 
@@ -344,6 +328,39 @@ class QiskitAdapter(Adapter):
                 self._original_functions["BackendV2.run"] = (BackendV2, "run", original_run)
         except ImportError:
             pass
+
+    def _watch_job(self, job: Any, backend: Any, run_kwargs: dict[str, Any]) -> None:
+        """Record what run() was given, and wrap the job's result() call."""
+        adapter = self
+
+        try:
+            job_id = job.job_id()
+        except Exception:
+            job_id = str(id(job))
+
+        # A caller may pass shots=None to mean "the backend default". The
+        # recorded shot count has to be an int, so fall back rather than
+        # putting None into Execution.
+        shots = run_kwargs.get("shots")
+
+        self._pending_job_data[job_id] = {
+            "submitted_at": utc_now(),
+            "shots": shots if isinstance(shots, int) else 4096,
+            "backend": backend,
+        }
+
+        original_result = job.result
+
+        @functools.wraps(original_result)
+        def wrapped_result(*result_args: Any, **result_kwargs: Any) -> Any:
+            result = original_result(*result_args, **result_kwargs)
+
+            with capture_guard(adapter.name, "job result"):
+                adapter._capture_result(job, result, job_id)
+
+            return result
+
+        job.result = wrapped_result
 
     def _capture_circuits_from_run(self, circuits: Any) -> None:
         """Capture circuits passed to run()."""
@@ -391,30 +408,24 @@ class QiskitAdapter(Adapter):
         )
         builder.set_execution(execution)
 
-        # Capture results
-        try:
-            # Handle different result formats
-            if hasattr(result, "get_counts"):
-                counts_dict = result.get_counts()
-                if isinstance(counts_dict, list):
-                    counts_dict = counts_dict[0]
+        # Capture results. Anything raised here reaches the caller's guard,
+        # which reports it once and lets job.result() return as normal.
+        if hasattr(result, "get_counts"):
+            counts_dict = result.get_counts()
+            if isinstance(counts_dict, list):
+                counts_dict = counts_dict[0]
 
-                shots = sum(counts_dict.values())
-                counts = Counts(raw=counts_dict, shots=shots)
+            shots = sum(counts_dict.values())
+            counts = Counts(raw=counts_dict, shots=shots)
 
-                result_hash = hashlib.sha256(str(sorted(counts_dict.items())).encode()).hexdigest()[:16]
+            qbom_result = Result(
+                counts=counts,
+                hash=result_hash(counts_dict),
+            )
+            builder.set_result(qbom_result)
 
-                qbom_result = Result(
-                    counts=counts,
-                    hash=result_hash,
-                )
-                builder.set_result(qbom_result)
-
-                # Finalize the trace
-                self.session.finalize_trace()
-
-        except Exception:
-            pass
+            # Finalize the trace
+            self.session.finalize_trace()
 
     def uninstall(self) -> None:
         """Remove Qiskit hooks."""
