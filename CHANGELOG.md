@@ -9,6 +9,55 @@ this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- **`qbom verify` verified nothing.** It appended a literal `True` for each of
+  four checks and then printed "VERDICT: QBOM appears authentic and complete",
+  which was the only verdict it could reach. A trace whose measurement counts
+  had been replaced passed. So did an edited shot count, `{}`, and
+  `{"hello": "world"}`, and every one of them exited 0, so no script or CI step
+  could tell a forgery from a real record. Verification now recomputes both
+  hashes a trace carries and compares each against the value the file records.
+  Rewriting the counts moves the result hash, which is recomputed from
+  `result.counts.raw`. Rewriting the circuits, the transpilation, the backend,
+  the qubits used, the shot count, the seed or the recorded result hash moves
+  the content hash. The content hash covers the result hash and not the counts
+  themselves, so both checks run and neither substitutes for the other. A
+  mismatch, a document carrying no `qbom_version` and no `id`, and a file that
+  is not a QBOM trace all exit 1.
+- **A check that could not fail was shown as a check that passed.** "Circuit
+  hash present" and "Result hash present" were presence tests reported beside
+  a verdict about authenticity. Each line now says what was compared against
+  what. A check that could not run is marked `?` and is counted as neither a
+  pass nor a failure: a result hash taken over an expectation value covers a
+  number the trace does not store, so it is reported as one that could not be
+  recomputed rather than as one that verified.
+- **`import qbom` could stop the script that imported it.** Capturing a backend
+  built `Hardware(num_qubits=backend.num_qubits, ...)`, and `num_qubits` is
+  legitimately `None` for an unbounded simulator such as Qiskit's
+  `BasicSimulator`, so `transpile(circuit, BasicSimulator())` ended in
+  `ValidationError: 1 validation error for Hardware`. Deleting the `import
+  qbom` line made the same script run. `Hardware.num_qubits` now accepts a
+  backend that reports no qubit count, and every place an adapter captures
+  inside a wrapper around a call the user made, in all three adapters, now
+  degrades to "not captured" instead of raising into that call. The first time
+  a capture stage fails it reports itself once on stderr, so a run that
+  captured nothing is not mistaken for a run with nothing to capture.
+- **`README.md` called an attribute that does not exist.** The Python API
+  snippet read `trace.hardware.backend_name`; the attribute is
+  `trace.hardware.backend`, as `docs/API.md` already documented.
+- **`cirq.Simulator().simulate(circuit)` ended in `ValueError: Don't know how to
+  interpret <None> as a Basis`.** The wrapper restated Cirq's signature, and so
+  restated its defaults, declaring `qubit_order=None` where Cirq's own default
+  is `QubitOrder.DEFAULT`, then forwarding it positionally. A plain
+  `simulate(circuit)` therefore reached Cirq with arguments the user never
+  wrote, and failed inside the user's own call. The wrapper now forwards the
+  call verbatim, so a default it does not name is a default it cannot
+  contradict.
+- **The audit workflow in `docs/USE-CASES.md` told the reader to verify the
+  wrong file.** It ran `qbom verify` against the CycloneDX export. Integrity is
+  established from the counts and content a trace records, which an SBOM export
+  does not carry, so that only ever appeared to work while verification
+  established nothing. The workflow now exports the trace as well and verifies
+  that.
 - **Every timestamp was recorded without saying which zone it was in.** Capture
   called `datetime.utcnow()`, which returns a value carrying no UTC offset and
   which Python 3.12 deprecated. Anyone reading a trace had to know by
@@ -59,6 +108,12 @@ this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- `qbom verify` sets an exit code. A clean file exits 0 and a failure exits 1,
+  so a CI step can gate on it. Its output changed shape: the sample in
+  `docs/CLI.md` was regenerated from an actual run.
+- `Hardware.num_qubits` may be null. Every trace already on disk records an
+  integer, and its content hash does not move, because the field was never
+  covered by it. `docs/specs/qbom-spec-1.0.json` and `docs/API.md` say so.
 - Timestamps in exported traces now carry a UTC offset. A field that read
   `"created_at": "2026-08-19T21:48:41.891059"` now reads `"created_at":
   "2026-08-19T21:48:41.891059+00:00"`. The instant is the same and the trace

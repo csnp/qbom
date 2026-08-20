@@ -215,7 +215,7 @@ Hardware information.
 |----------|------|-------------|
 | `provider` | str | Provider name |
 | `backend` | str | Backend name |
-| `num_qubits` | int | Total qubit count |
+| `num_qubits` | int \| None | Total qubit count, or None where the backend does not report one |
 | `qubits_used` | list[int] | Physical qubits used |
 | `is_simulator` | bool | Whether backend is simulator |
 | `calibration` | Calibration | Calibration data |

@@ -319,7 +319,7 @@ This statement can be included in your paper's Methods section.
 
 ### qbom verify
 
-Verify integrity of a QBOM file.
+Check a QBOM file against the hashes it records.
 
 ```bash
 qbom verify FILE
@@ -331,17 +331,62 @@ qbom verify FILE
 |----------|-------------|
 | `FILE` | Path to QBOM JSON file |
 
+**Exit codes:**
+
+| Code | Meaning |
+|------|---------|
+| `0` | Every recorded hash matches the content the file carries |
+| `1` | A hash does not match, or the file is not a QBOM trace |
+
 **Example:**
 
 ```bash
 $ qbom verify experiment.qbom.json
 
-╭──────────────────────────────── Verification ────────────────────────────────╮
-│ ✓ File is valid QBOM format                                                  │
-│ ✓ Content hash verified: a9463e429a524897                                    │
-│ ✓ All required fields present                                                │
-╰──────────────────────────────────────────────────────────────────────────────╯
+QBOM Verification
+
+  ✓ QBOM document structure: QBOM 1.0 trace qbom_ba1d3fbe
+  ✓ Content hash against trace content: matches, 0909d25f80c0f8cf
+  ✓ Result hash against recorded counts: matches, 6c6cb00ac5a34314 over 2
+outcomes
+  ✓ Execution timestamp order: in order, submitted_at then completed_at
+
+VERDICT: every hash this file records matches the content it carries
+A circuit hash is taken from the framework's own circuit object, which the
+trace does not store, so an individual circuit body is not independently
+checked.
 ```
+
+A file whose measurement counts were edited after it was written:
+
+```bash
+$ qbom verify tampered.qbom.json
+
+QBOM Verification
+
+  ✓ QBOM document structure: QBOM 1.0 trace qbom_f71674c9
+  ✓ Content hash against trace content: matches, fce1733fa9b3355d
+  ✗ Result hash against recorded counts: the file records 2326158e16888826,
+its counts hash to dc0603dc165dd60e. The measurement outcomes changed after
+this trace was written
+  ✓ Execution timestamp order: in order, submitted_at then completed_at
+
+VERDICT: verification failed (Result hash against recorded counts)
+
+$ echo $?
+1
+```
+
+The content hash covers the circuits, the transpilation, the backend, the
+qubits used, the shot count, the seed and the recorded result hash. It does
+not cover the counts themselves, so rewriting only the counts leaves it
+matching. That case is caught by recomputing the result hash, which is why
+both checks run and neither substitutes for the other.
+
+A line marked `?` is a check that could not run, and it establishes nothing.
+A result that is not counts, an expectation value for instance, is hashed over
+a value the trace does not store, so its hash cannot be recomputed and is
+reported that way rather than as verified.
 
 ---
 

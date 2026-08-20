@@ -14,7 +14,8 @@ import functools
 import hashlib
 from typing import TYPE_CHECKING, Any
 
-from qbom.adapters.base import Adapter
+from qbom.adapters.base import Adapter, capture_guard
+from qbom.core.hashing import result_hash
 from qbom.core.models import (
     Circuit,
     Counts,
@@ -175,45 +176,36 @@ class CirqAdapter(Adapter):
                 repetitions: int = 1,
                 **kwargs: Any,
             ) -> Any:
-                builder = adapter.session.current_builder
-
-                # Capture circuit
-                builder.add_circuit(_circuit_to_model(program))
-
-                # Capture hardware (simulator)
-                hardware = Hardware(
-                    provider="Cirq",
-                    backend="cirq.Simulator",
-                    num_qubits=len(program.all_qubits()),
-                    is_simulator=True,
-                )
-                builder.set_hardware(hardware)
-
-                # Capture execution params
                 submitted_at = utc_now()
 
-                # Run original
+                with capture_guard(adapter.name, "Simulator.run input"):
+                    builder = adapter.session.current_builder
+                    builder.add_circuit(_circuit_to_model(program))
+                    builder.set_hardware(
+                        Hardware(
+                            provider="Cirq",
+                            backend="cirq.Simulator",
+                            num_qubits=len(program.all_qubits()),
+                            is_simulator=True,
+                        )
+                    )
+
                 result = original_run(self_sim, program, param_resolver, repetitions, **kwargs)
 
-                completed_at = utc_now()
+                with capture_guard(adapter.name, "Simulator.run result"):
+                    builder = adapter.session.current_builder
+                    builder.set_execution(
+                        Execution(
+                            shots=repetitions,
+                            submitted_at=submitted_at,
+                            completed_at=utc_now(),
+                        )
+                    )
 
-                # Capture execution
-                execution = Execution(
-                    shots=repetitions,
-                    submitted_at=submitted_at,
-                    completed_at=completed_at,
-                )
-                builder.set_execution(execution)
+                    counts = _extract_counts_from_result(result, repetitions)
+                    builder.set_result(Result(counts=counts, hash=result_hash(counts.raw)))
 
-                # Capture results
-                counts = _extract_counts_from_result(result, repetitions)
-                result_hash = hashlib.sha256(str(sorted(counts.raw.items())).encode()).hexdigest()[:16]
-
-                qbom_result = Result(counts=counts, hash=result_hash)
-                builder.set_result(qbom_result)
-
-                # Finalize trace
-                adapter.session.finalize_trace()
+                    adapter.session.finalize_trace()
 
                 return result
 
@@ -232,37 +224,36 @@ class CirqAdapter(Adapter):
             original_simulate = cirq.Simulator.simulate
             adapter = self
 
+            # Forward the call verbatim rather than restating cirq's signature.
+            # Restating it means restating its defaults, and they drift: this
+            # wrapper declared `qubit_order=None` and passed it positionally,
+            # while cirq's own default is QubitOrder.DEFAULT. So a plain
+            # simulate(circuit) reached cirq as simulate(circuit, None, None)
+            # and died inside the user's own call with
+            # "Don't know how to interpret <None> as a Basis". A wrapper that
+            # does not name a default cannot contradict one.
             @functools.wraps(original_simulate)
-            def wrapped_simulate(
-                self_sim: Any,
-                program: Any,
-                param_resolver: Any = None,
-                qubit_order: Any = None,
-                initial_state: Any = None,
-            ) -> Any:
-                builder = adapter.session.current_builder
+            def wrapped_simulate(self_sim: Any, *args: Any, **kwargs: Any) -> Any:
+                with capture_guard(adapter.name, "Simulator.simulate input"):
+                    program = args[0] if args else kwargs.get("program")
+                    builder = adapter.session.current_builder
+                    builder.add_circuit(_circuit_to_model(program))
+                    builder.set_hardware(
+                        Hardware(
+                            provider="Cirq",
+                            backend="cirq.Simulator (state vector)",
+                            num_qubits=len(program.all_qubits()),
+                            is_simulator=True,
+                        )
+                    )
 
-                # Capture circuit
-                builder.add_circuit(_circuit_to_model(program))
+                result = original_simulate(self_sim, *args, **kwargs)
 
-                # Capture hardware (simulator)
-                hardware = Hardware(
-                    provider="Cirq",
-                    backend="cirq.Simulator (state vector)",
-                    num_qubits=len(program.all_qubits()),
-                    is_simulator=True,
-                )
-                builder.set_hardware(hardware)
-
-                # Run original
-                result = original_simulate(self_sim, program, param_resolver, qubit_order, initial_state)
-
-                # For state vector simulation, we capture the final state
-                execution = Execution(
-                    shots=1,  # State vector is a single "shot"
-                    completed_at=utc_now(),
-                )
-                builder.set_execution(execution)
+                with capture_guard(adapter.name, "Simulator.simulate result"):
+                    # State vector simulation is a single "shot".
+                    adapter.session.current_builder.set_execution(
+                        Execution(shots=1, completed_at=utc_now()),
+                    )
 
                 return result
 
@@ -290,39 +281,36 @@ class CirqAdapter(Adapter):
                     repetitions: int = 1,
                     **kwargs: Any,
                 ) -> Any:
-                    builder = adapter.session.current_builder
-
-                    # Capture circuit
-                    builder.add_circuit(_circuit_to_model(program))
-
-                    # Capture hardware
-                    hardware = Hardware(
-                        provider="Cirq",
-                        backend="cirq.DensityMatrixSimulator",
-                        num_qubits=len(program.all_qubits()),
-                        is_simulator=True,
-                    )
-                    builder.set_hardware(hardware)
-
                     submitted_at = utc_now()
+
+                    with capture_guard(adapter.name, "DensityMatrixSimulator.run input"):
+                        builder = adapter.session.current_builder
+                        builder.add_circuit(_circuit_to_model(program))
+                        builder.set_hardware(
+                            Hardware(
+                                provider="Cirq",
+                                backend="cirq.DensityMatrixSimulator",
+                                num_qubits=len(program.all_qubits()),
+                                is_simulator=True,
+                            )
+                        )
+
                     result = original_run(self_sim, program, param_resolver, repetitions, **kwargs)
-                    completed_at = utc_now()
 
-                    execution = Execution(
-                        shots=repetitions,
-                        submitted_at=submitted_at,
-                        completed_at=completed_at,
-                    )
-                    builder.set_execution(execution)
+                    with capture_guard(adapter.name, "DensityMatrixSimulator.run result"):
+                        builder = adapter.session.current_builder
+                        builder.set_execution(
+                            Execution(
+                                shots=repetitions,
+                                submitted_at=submitted_at,
+                                completed_at=utc_now(),
+                            )
+                        )
 
-                    # Capture results
-                    counts = _extract_counts_from_result(result, repetitions)
-                    result_hash = hashlib.sha256(str(sorted(counts.raw.items())).encode()).hexdigest()[:16]
+                        counts = _extract_counts_from_result(result, repetitions)
+                        builder.set_result(Result(counts=counts, hash=result_hash(counts.raw)))
 
-                    qbom_result = Result(counts=counts, hash=result_hash)
-                    builder.set_result(qbom_result)
-
-                    adapter.session.finalize_trace()
+                        adapter.session.finalize_trace()
 
                     return result
 
