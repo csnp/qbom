@@ -197,8 +197,9 @@ class Trace(BaseModel):
 
         Supported Formats:
             - json: Native QBOM format (default)
-            - cyclonedx: CycloneDX 1.5 SBOM with QBOM extension
-            - spdx: SPDX 2.3 SBOM with QBOM extension
+            - cyclonedx: CycloneDX 1.5 SBOM of the software the experiment
+              ran on, tied to this trace by id and content hash
+            - spdx: the same, as an SPDX 2.3 document
             - yaml: YAML representation of native format
         """
         path = Path(path)
@@ -313,7 +314,7 @@ class Trace(BaseModel):
 
     def _to_spdx(self) -> str:
         """
-        Export as SPDX 2.3 SBOM with QBOM extension.
+        Export as an SPDX 2.3 SBOM.
 
         SPDX (Software Package Data Exchange) is an open standard for
         communicating software bill of materials information.

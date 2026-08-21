@@ -128,10 +128,14 @@ def export(trace_id: str, output: str, format: str) -> None:
     """Export a trace to a file.
 
     Supported formats:
-    - json: Native QBOM format (default)
-    - cyclonedx: CycloneDX 1.5 SBOM with QBOM extension
-    - spdx: SPDX 2.3 SBOM with QBOM extension
-    - yaml: YAML representation
+    - json: the full QBOM trace (default)
+    - cyclonedx: a CycloneDX 1.5 SBOM of the software the experiment ran on,
+      carrying the trace id and content hash so it can be tied back to the trace
+    - spdx: the same, as an SPDX 2.3 document
+    - yaml: the full trace as YAML
+
+    The SBOM formats describe the software, not the experiment. Export the
+    trace itself, with no format flag, to keep the circuits and results.
     """
     trace = _load_trace(trace_id)
 

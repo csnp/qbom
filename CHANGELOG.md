@@ -5,7 +5,43 @@ All notable changes to QBOM are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and
 this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.1.1] - 2026-08-21
+
+First tagged release. 0.1.0 was the version in `pyproject.toml` from the start
+of the project and was never tagged or published, so there is no earlier release
+to compare against. Everything below is the difference between this tag and the
+initial state of the repository.
+
+### Known issues
+
+These are real defects, found by the walkthrough that gated this release, and
+they ship unfixed. They are listed here rather than left to be discovered,
+because two of them make the tool report something untrue and a reader deserves
+to know which parts to distrust. Each carries a reproduction in its issue, and
+all are scheduled for 0.2.0.
+
+- **The recorded backend can be the wrong one** ([#4](https://github.com/csnp/qbom/issues/4)).
+  Capture binds the inner execution delegate rather than the backend passed, so
+  a run on a hardware-shaped backend that delegates to a simulator is recorded
+  as the simulator, and a captured calibration is overwritten by the later run.
+  Until this is fixed, do not rely on the hardware section of a trace whose
+  backend delegates to another.
+- **`qbom diff` compares the circuit as submitted, not the one that ran**
+  ([#5](https://github.com/csnp/qbom/issues/5)). Two experiments whose executed
+  circuits differ can be reported as matching on every row, including the
+  circuit hash. The same record drives `qbom score`.
+- **`qbom validate` exits 0 even when it prints FAIL**
+  ([#6](https://github.com/csnp/qbom/issues/6)), so it cannot gate a CI step,
+  and the fix text it prints cannot be run against the qiskit the `qiskit`
+  extra installs.
+- **Some documented commands and attributes do not exist**
+  ([#7](https://github.com/csnp/qbom/issues/7)), including `qbom list --tag`,
+  passing a file path where a trace id is documented as accepted, and the
+  `qbom.analysis` reference in `docs/API.md`.
+- **A Cirq run writes a second, empty trace and that is the one shown**
+  ([#8](https://github.com/csnp/qbom/issues/8)). Capture itself works; the
+  populated trace is on disk. Use `qbom list` rather than the `qbom.show()` the
+  Cirq walkthroughs end with.
 
 ### Fixed
 
@@ -154,3 +190,5 @@ this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - README and docs sample output regenerated from an actual run. The previous
   samples predated several output changes.
 - CI runs on Python 3.13 as well as 3.10 to 3.12.
+
+[0.1.1]: https://github.com/csnp/qbom/releases/tag/v0.1.1
