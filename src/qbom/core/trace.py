@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import uuid
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Literal
@@ -31,6 +32,37 @@ def _generate_id() -> str:
     import secrets
 
     return f"qbom_{secrets.token_hex(4)}"
+
+
+def _tool_version() -> str:
+    """The version of the qbom package that produced a document.
+
+    This is the version of the tool. It is not `Trace.qbom_version`, which is
+    the version of the trace format. The two are different numbers, and an SBOM
+    that reports one where the other belongs misstates who produced it. Read
+    from the installed package so `pyproject.toml` stays the single place the
+    tool version is declared; a literal here would be a second one.
+    """
+    from qbom import __version__
+
+    return __version__
+
+
+def _drop_nulls(value: Any) -> Any:
+    """Return `value` with every key whose value is None removed, recursively.
+
+    The CycloneDX 1.5 schema declares no nullable field, so a key carrying null
+    is a validation error wherever it appears: `metadata.component.description`
+    set to None on a trace with no description failed the schema the document
+    itself declares. Omitting the key says the same thing, and says it legally.
+    Stripping the whole document rather than that one field means a field added
+    later cannot reintroduce the defect.
+    """
+    if isinstance(value, dict):
+        return {key: _drop_nulls(item) for key, item in value.items() if item is not None}
+    if isinstance(value, list):
+        return [_drop_nulls(item) for item in value]
+    return value
 
 
 class Metadata(BaseModel):
@@ -191,16 +223,55 @@ class Trace(BaseModel):
 
         return path
 
+    @property
+    def sbom_serial_number(self) -> str:
+        """RFC 4122 URN identifying this trace, stable for a given trace ID.
+
+        CycloneDX requires the serial number to be a UUID URN. The trace ID is
+        not a UUID (`qbom_906738fe`), so interpolating it produced a document
+        that failed the schema it declares.
+
+        The UUID is derived, not drawn: uuid5 over the RFC 4122 URL namespace
+        with the trace's own URL as the name. Two exports of the same trace
+        therefore carry the same serial number, and two different traces carry
+        different ones, so an SBOM can be compared against an earlier copy of
+        itself. Both inputs are published constants, so anyone holding the trace
+        ID can recompute the value and check it.
+        """
+        trace_url = f"https://qbom.csnp.org/trace/{self.id}"
+        return f"urn:uuid:{uuid.uuid5(uuid.NAMESPACE_URL, trace_url)}"
+
     def _to_cyclonedx(self) -> str:
-        """Export as CycloneDX SBOM with QBOM extension."""
-        sbom = {
+        """Export as a CycloneDX 1.5 SBOM.
+
+        The SBOM records the software the experiment ran on and identifies the
+        trace it came from. It is not a copy of the trace: CycloneDX 1.5 sets
+        `additionalProperties: false` at the document root, so the whole-trace
+        `extensions` block this used to write made every document invalid, and
+        the JSON schema offers no other place to put a nested record of that
+        shape. The trace ID and content hash travel in `metadata.properties`,
+        which is the name-value store the standard provides for exactly this,
+        and the trace itself is exported by the same command without `-f`.
+        """
+        sbom: dict[str, Any] = {
             "$schema": "http://cyclonedx.org/schema/bom-1.5.schema.json",
             "bomFormat": "CycloneDX",
             "specVersion": "1.5",
             "version": 1,
-            "serialNumber": f"urn:uuid:{self.id}",
+            "serialNumber": self.sbom_serial_number,
             "metadata": {
                 "timestamp": self.created_at.isoformat(),
+                # Who produced this document. `tools.components` is the 1.5
+                # form; the bare array is the deprecated 1.4 one.
+                "tools": {
+                    "components": [
+                        {
+                            "type": "application",
+                            "name": "qbom",
+                            "version": _tool_version(),
+                        }
+                    ]
+                },
                 "component": {
                     "type": "application",
                     "name": self.metadata.name or "quantum-experiment",
@@ -208,7 +279,10 @@ class Trace(BaseModel):
                     "description": self.metadata.description,
                 },
                 "properties": [
-                    {"name": "qbom:version", "value": self.qbom_version},
+                    # Named so it cannot be read as the version of the tool,
+                    # which is the record above.
+                    {"name": "qbom:trace-format-version", "value": self.qbom_version},
+                    {"name": "qbom:trace-id", "value": self.id},
                     {"name": "qbom:content-hash", "value": self.content_hash},
                 ],
             },
@@ -220,10 +294,7 @@ class Trace(BaseModel):
         if self.metadata.paper:
             sbom["externalReferences"].append({"type": "documentation", "url": self.metadata.paper})
 
-        # Embed full QBOM as extension
-        sbom["extensions"] = {"qbom": self.to_dict()}
-
-        return json.dumps(sbom, indent=2, default=str)
+        return json.dumps(_drop_nulls(sbom), indent=2, default=str)
 
     def _generate_cyclonedx_components(self) -> list[dict]:
         """Generate CycloneDX components from environment."""
@@ -246,6 +317,11 @@ class Trace(BaseModel):
 
         SPDX (Software Package Data Exchange) is an open standard for
         communicating software bill of materials information.
+
+        SPDX 2.3 defines a `Tool:` creator as `Tool: <name>-<version>`, so that
+        field has to carry the version of the package that wrote the document.
+        It used to carry the trace format version, which asserted that qbom 1.0
+        produced it.
         """
 
         # Generate SPDX document namespace
@@ -260,7 +336,7 @@ class Trace(BaseModel):
             "creationInfo": {
                 "created": self.created_at.isoformat(),
                 "creators": [
-                    "Tool: qbom-" + self.qbom_version,
+                    f"Tool: qbom-{_tool_version()}",
                     *[f"Person: {author}" for author in self.metadata.authors],
                 ],
                 "licenseListVersion": "3.19",
@@ -283,7 +359,7 @@ class Trace(BaseModel):
                 }
             ]
 
-        return json.dumps(spdx, indent=2, default=str)
+        return json.dumps(_drop_nulls(spdx), indent=2, default=str)
 
     def _generate_spdx_packages(self) -> list[dict]:
         """Generate SPDX packages from environment and experiment."""
@@ -377,10 +453,13 @@ class Trace(BaseModel):
         qbom_annotation = {
             "annotationDate": self.created_at.isoformat(),
             "annotationType": "OTHER",
-            "annotator": "Tool: qbom",
+            "annotator": f"Tool: qbom-{_tool_version()}",
             "comment": json.dumps(
                 {
-                    "qbom_version": self.qbom_version,
+                    # Two versions, named apart: the package that wrote this
+                    # document, and the format of the trace it was written from.
+                    "tool_version": _tool_version(),
+                    "trace_format_version": self.qbom_version,
                     "trace_id": self.id,
                     "content_hash": self.content_hash,
                     "summary": self.summary,
