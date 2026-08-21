@@ -169,9 +169,13 @@ qbom score <trace-id>
 | Framework | Status |
 |-----------|--------|
 | **Qiskit** | Full support |
-| **Cirq** | Supported |
+| **Cirq** | Supported, with a known display defect. Capture works and the trace is written, but a run also writes a second empty trace and `qbom.show()` displays that one. Use `qbom list` to find the populated trace. See [#8](https://github.com/csnp/qbom/issues/8). |
 | **PennyLane** | Supported |
 | **Braket** | Planned |
+
+Whichever framework you use, note the known defects listed for this release in
+[CHANGELOG.md](CHANGELOG.md), particularly that a backend which delegates to a
+simulator is currently recorded as the simulator ([#4](https://github.com/csnp/qbom/issues/4)).
 
 ### Reproducibility Score
 
