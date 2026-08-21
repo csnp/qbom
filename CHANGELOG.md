@@ -9,6 +9,26 @@ this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- **Every SBOM QBOM exported named the wrong tool version.** SPDX declared
+  `creationInfo.creators` as `["Tool: qbom-1.0"]`, and SPDX 2.3 defines that
+  field as `Tool: <name>-<version>`, so every document asserted it was produced
+  by qbom 1.0. The CycloneDX output carried a `qbom:version` property saying the
+  same thing and no record of the tool at all. The cause was a conflation: the
+  code used the trace FORMAT version, which is 1.0 and belongs to the file
+  layout, where the TOOL version belongs. They are different numbers. SPDX and
+  CycloneDX now both name the package version, read from the installed package
+  so it cannot fall behind a release, and the format version is still reported
+  under a name that cannot be mistaken for it.
+- **The CycloneDX export was not valid CycloneDX.** It failed the 1.5 schema
+  the document itself declares in its own `$schema` field, on three counts, so
+  any conformant reader rejected it. The root carried an `extensions` key, and
+  1.5 permits no additional root properties. `serialNumber` was
+  `urn:uuid:` followed by the trace id, and a trace id is not a UUID. And
+  `metadata.component.description` was emitted as null on any trace without a
+  description, where the schema requires a string or nothing. The serial number
+  is now a UUID derived from the trace id, so the same trace always exports the
+  same one and it can still be recomputed by anyone holding the id. No field is
+  emitted as null in either format.
 - **`qbom verify` verified nothing.** It appended a literal `True` for each of
   four checks and then printed "VERDICT: QBOM appears authentic and complete",
   which was the only verdict it could reach. A trace whose measurement counts
@@ -108,6 +128,17 @@ this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- The CycloneDX export no longer embeds the whole trace. It used to carry a
+  root `extensions` key holding a complete copy of the trace, including every
+  captured package, which is what made the document invalid. The trace id and
+  content hash travel in `metadata.properties` instead, so an SBOM can still be
+  tied to the trace it came from, and the trace itself is exported by the same
+  command without `-f`. A reader who was parsing `extensions.qbom` should read
+  the trace export instead.
+- The version is declared once, in `pyproject.toml`. `qbom.__version__` reads
+  the version the package was installed with. It used to be a second literal in
+  `src/qbom/__init__.py`, so bumping one and not the other made
+  `qbom --version` and `qbom.__version__` disagree, with nothing to catch it.
 - `qbom verify` sets an exit code. A clean file exits 0 and a failure exits 1,
   so a CI step can gate on it. Its output changed shape: the sample in
   `docs/CLI.md` was regenerated from an actual run.

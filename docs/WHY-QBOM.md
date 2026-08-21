@@ -176,7 +176,12 @@ QBOM doesn't reinvent the wheel. It extends existing standards:
 
 ### CycloneDX Compatibility
 
-CycloneDX is the leading software bill of materials (SBOM) standard. QBOM exports to CycloneDX format, adding quantum-specific extensions.
+CycloneDX is the leading software bill of materials (SBOM) standard. QBOM
+exports a CycloneDX 1.5 document that validates against the published schema,
+listing the software the experiment ran on and carrying the trace id and content
+hash as properties, so the SBOM can be tied back to the trace it came from. The
+trace itself is a separate export, since a bill of materials is not a container
+for the whole experiment record.
 
 ```bash
 qbom export my_trace experiment.cdx.json --format cyclonedx

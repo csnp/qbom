@@ -22,7 +22,17 @@ Copyright 2025 CyberSecurity NonProfit (CSNP)
 Licensed under Apache 2.0
 """
 
-__version__ = "0.1.0"
+from importlib.metadata import PackageNotFoundError
+from importlib.metadata import version as _installed_version
+
+try:
+    # Read the version the package was installed with, so pyproject.toml is the
+    # single place it is declared. Hardcoding it here as well let the two drift:
+    # qbom.__version__ said 0.1.0 while qbom --version said 0.1.1.
+    __version__ = _installed_version("qbom")
+except PackageNotFoundError:  # pragma: no cover - running from a source tree
+    __version__ = "unknown"
+
 __author__ = "CSNP"
 
 from qbom.core.session import Session, current, experiment, export, show
