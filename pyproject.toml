@@ -61,6 +61,12 @@ dev = [
     "pytest-cov>=4.0.0",
     "ruff>=0.1.0",
     "mypy>=1.0.0",
+    # The SBOM tests validate the exports against the official CycloneDX and
+    # SPDX schemas vendored under tests/schemas/. Without this the whole test
+    # module fails to import, and a module that does not import runs none of
+    # its tests while the run still looks like a dependency problem rather
+    # than a coverage hole.
+    "jsonschema>=4.0.0",
 ]
 
 [project.scripts]
