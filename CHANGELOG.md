@@ -49,6 +49,17 @@ this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   check says that their environment and metadata are not covered. The format
   a trace records decides which content is hashed, and a format this release
   does not know fails the content hash check rather than skipping it.
+- **`qbom diff` compared the circuit as submitted, not the one that ran**
+  ([#5](https://github.com/csnp/qbom/issues/5)). Transpilation maps qubits,
+  substitutes gates for the target basis and changes depth, so two runs of one
+  source circuit at optimization levels 0 and 3 execute different circuits.
+  diff read the first circuit a trace recorded, which is the source, and
+  reported those runs as matching on every row, the circuit hash included. The
+  circuit rows now compare the transpiled circuit wherever a trace recorded
+  one, add a gate count row, and keep the source circuit hash in a row of its
+  own. A `Circuit compared` row and a line under the table say which circuit
+  was compared for each trace, including when only one of the two recorded a
+  transpiled circuit. `qbom score` is unchanged.
 
 ## [0.1.1] - 2026-08-21
 

@@ -16,9 +16,14 @@ from rich.table import Table
 from rich.text import Text
 
 if TYPE_CHECKING:
+    from qbom.core.models import Circuit
     from qbom.core.trace import Trace
 
 console = Console()
+
+# Which record a compared circuit came from.
+TRANSPILED = "transpiled"
+AS_SUBMITTED = "as submitted"
 
 
 def display_trace_list(traces: list[Trace]) -> None:
@@ -177,6 +182,42 @@ def display_trace(trace: Trace) -> None:
     console.print(panel)
 
 
+def executed_circuit(trace: Trace) -> tuple[Circuit, str] | None:
+    """
+    The circuit a trace executed, and which record it was taken from.
+
+    Transpilation is the step that changes a circuit: it maps qubits onto the
+    backend, substitutes gates for the target basis and changes depth. Two runs
+    of one source circuit at different optimization levels, or against
+    different backends, execute different circuits. Where a trace recorded the
+    transpiled circuit, that is the one compared. Otherwise the first circuit
+    recorded, the circuit as submitted, is the closest record there is.
+    """
+    if trace.transpilation and trace.transpilation.output_circuit:
+        return trace.transpilation.output_circuit, TRANSPILED
+    if trace.circuits:
+        return trace.circuits[0], AS_SUBMITTED
+    return None
+
+
+def _gate_summary(circuit: Circuit) -> str:
+    gates = circuit.gates
+    return f"{gates.total} ({gates.single_qubit} 1q, {gates.two_qubit} 2q)"
+
+
+def _compared_circuit_note(id1: str, kind1: str, id2: str, kind2: str) -> str:
+    """Say which circuit the circuit rows of a diff compared."""
+    if kind1 == kind2 == TRANSPILED:
+        return "Circuit rows compare the transpiled circuit each trace executed, not the circuit as submitted."
+    if kind1 == kind2:
+        return "Circuit rows compare the circuit as submitted. Neither trace recorded a transpiled circuit."
+    transpiled, submitted = (id1, id2) if kind1 == TRANSPILED else (id2, id1)
+    return (
+        f"Circuit rows compare the transpiled circuit of {transpiled} with the circuit as submitted "
+        f"of {submitted}, which recorded no transpiled circuit."
+    )
+
+
 def display_diff(trace1: Trace, trace2: Trace) -> None:
     """Display side-by-side comparison of two traces."""
     table = Table(
@@ -208,12 +249,24 @@ def display_diff(trace1: Trace, trace2: Trace) -> None:
             trace2.environment.quantum_sdk or "-",
         )
 
-    # Circuit
-    if trace1.circuits and trace2.circuits:
-        c1, c2 = trace1.circuits[0], trace2.circuits[0]
+    # Circuit. Compare the circuit that ran. Comparing the circuit as submitted
+    # reported two runs of one source circuit as identical on every row while
+    # transpilation had given them different depths and gates.
+    executed1, executed2 = executed_circuit(trace1), executed_circuit(trace2)
+    circuit_note = None
+    transpiled_differently = False
+    if executed1 and executed2:
+        (c1, kind1), (c2, kind2) = executed1, executed2
+        add_row("Circuit compared", kind1, kind2)
         add_row("Circuit qubits", str(c1.num_qubits), str(c2.num_qubits))
         add_row("Circuit depth", str(c1.depth), str(c2.depth))
+        add_row("Circuit gates", _gate_summary(c1), _gate_summary(c2))
         add_row("Circuit hash", c1.hash, c2.hash)
+        if kind1 == kind2 == TRANSPILED and trace1.circuits and trace2.circuits:
+            s1, s2 = trace1.circuits[0], trace2.circuits[0]
+            add_row("Source circuit hash", s1.hash, s2.hash)
+            transpiled_differently = s1.hash == s2.hash and c1.hash != c2.hash
+        circuit_note = _compared_circuit_note(trace1.id, kind1, trace2.id, kind2)
 
     # Hardware
     if trace1.hardware and trace2.hardware:
@@ -230,7 +283,15 @@ def display_diff(trace1: Trace, trace2: Trace) -> None:
 
     console.print(table)
 
+    if circuit_note:
+        # As Text, not markup: the note carries trace ids read from files.
+        console.print(Text(circuit_note, style="dim"))
+
     # Analysis
+    if transpiled_differently:
+        console.print(
+            "\n[yellow]⚠ Same source circuit, but transpilation produced different executed circuits[/yellow]"
+        )
     if trace1.hardware and trace2.hardware:
         if trace1.hardware.backend != trace2.hardware.backend:
             console.print("\n[yellow]⚠ Different backends may explain result differences[/yellow]")
