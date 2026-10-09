@@ -10,8 +10,11 @@ Captures Qiskit operations invisibly:
 
 from __future__ import annotations
 
+import contextvars
 import functools
 import hashlib
+import inspect
+import weakref
 from collections.abc import Callable
 from typing import TYPE_CHECKING, Any
 
@@ -34,6 +37,25 @@ from qbom.core.timeutil import utc_now
 
 if TYPE_CHECKING:
     from qbom.core.session import Session
+
+
+# Set while a backend's run() is executing. A backend may hand its circuits to
+# another backend: GenericBackendV2 and the fake device backends run them on an
+# AerSimulator they hold internally. The caller chose the outer backend, and the
+# inner run() is part of that one call, so only the outermost run() is recorded.
+_in_backend_run: contextvars.ContextVar[bool] = contextvars.ContextVar("qbom_qiskit_in_backend_run", default=False)
+
+
+def _subclasses(cls: type) -> list[type]:
+    """Every class that currently inherits from cls, at any depth."""
+    found: list[type] = []
+    pending: list[type] = list(cls.__subclasses__())
+    while pending:
+        sub = pending.pop()
+        if sub not in found:
+            found.append(sub)
+            pending.extend(sub.__subclasses__())
+    return found
 
 
 def _hash_circuit(circuit: Any) -> str:
@@ -181,6 +203,12 @@ class QiskitAdapter(Adapter):
     def __init__(self, session: Session) -> None:
         super().__init__(session)
         self._pending_job_data: dict[str, dict[str, Any]] = {}
+        # The backend each trace's hardware was captured from, so a later stage
+        # can tell whether it is looking at the same backend again.
+        self._hardware_sources: weakref.WeakKeyDictionary[Any, Any] = weakref.WeakKeyDictionary()
+        # (class, its own __init_subclass__ or None) while new backend classes
+        # are being hooked as they are defined.
+        self._subclass_hook: tuple[type, Any] | None = None
 
     def install(self) -> None:
         """Install Qiskit hooks."""
@@ -272,62 +300,99 @@ class QiskitAdapter(Adapter):
         if provider_name == "Unknown" and "aer" in backend.name.lower():
             provider_name = "Aer (Local)"
 
+        calibration = _capture_calibration(backend)
+        if calibration is None:
+            # transpile() and run() both capture the backend. When the second
+            # read of the same backend returns no calibration (a provider that
+            # cannot be reached at run time, say), the one already captured for
+            # this trace still describes that backend, so keep it.
+            previous = builder._data.get("hardware")
+            if previous is not None and self._hardware_sources.get(builder) is backend:
+                calibration = previous.calibration
+
         hardware = Hardware(
             provider=provider_name,
             backend=backend.name,
             num_qubits=backend.num_qubits,
             is_simulator=is_sim,
-            calibration=_capture_calibration(backend),
+            calibration=calibration,
         )
         builder.set_hardware(hardware)
+        self._hardware_sources[builder] = backend
 
     def _hook_backend_run(self) -> None:
-        """Hook into backend.run() to capture execution."""
-        adapter = self
-
-        def make_run_wrapper(original_run: Callable, class_name: str) -> Callable:
-            """Create a wrapper for a run method."""
-
-            @functools.wraps(original_run)
-            def wrapped_run(self_backend: Any, *args: Any, **kwargs: Any) -> Any:
-                with capture_guard(adapter.name, "backend.run"):
-                    circuits = args[0] if args else kwargs.get("circuits")
-                    if circuits is not None:
-                        adapter._capture_circuits_from_run(circuits)
-                    adapter._capture_backend(self_backend)
-
-                job = original_run(self_backend, *args, **kwargs)
-
-                with capture_guard(adapter.name, "job submission"):
-                    adapter._watch_job(job, self_backend, kwargs)
-
-                return job
-
-            return wrapped_run
-
-        # Hook AerBackend.run (used by AerSimulator)
-        try:
-            from qiskit_aer.backends.aerbackend import AerBackend
-
-            if not hasattr(AerBackend, "_qbom_hooked"):
-                original_run = AerBackend.run
-                AerBackend.run = make_run_wrapper(original_run, "AerBackend")
-                AerBackend._qbom_hooked = True
-                self._original_functions["AerBackend.run"] = (AerBackend, "run", original_run)
-        except ImportError:
-            pass
-
-        # Hook BackendV2.run (for IBM backends and others)
+        """Hook run() on every Qiskit backend class, present and future."""
         try:
             from qiskit.providers import BackendV2
-
-            if not hasattr(BackendV2, "_qbom_hooked"):
-                original_run = BackendV2.run
-                BackendV2.run = make_run_wrapper(original_run, "BackendV2")
-                BackendV2._qbom_hooked = True
-                self._original_functions["BackendV2.run"] = (BackendV2, "run", original_run)
         except ImportError:
-            pass
+            return
+
+        # Concrete backends override run(), so wrapping BackendV2.run alone
+        # never sees them. Wrap each class that defines its own run(), and the
+        # ones defined later too: GenericBackendV2 lives in a module that
+        # `import qiskit` does not load.
+        for cls in [BackendV2, *_subclasses(BackendV2)]:
+            self._hook_run(cls)
+        self._hook_new_backend_classes(BackendV2)
+
+    def _hook_run(self, cls: type) -> None:
+        """Wrap run() on one backend class, if it defines its own."""
+        original_run = cls.__dict__.get("run")
+        if not inspect.isfunction(original_run) or getattr(original_run, "_qbom_wrapped", False):
+            return
+
+        cls.run = self._make_run_wrapper(original_run)
+        self._original_functions[f"{cls.__module__}.{cls.__qualname__}.run"] = (cls, "run", original_run)
+
+    def _hook_new_backend_classes(self, base: type) -> None:
+        """Hook run() on each subclass of base as the class is defined."""
+        if self._subclass_hook is not None:
+            return
+
+        adapter = self
+        original = base.__dict__.get("__init_subclass__")
+
+        def hook_subclass(cls: type, **kwargs: Any) -> None:
+            if original is not None:
+                original.__get__(None, cls)(**kwargs)
+            else:
+                super(base, cls).__init_subclass__(**kwargs)
+
+            with capture_guard(adapter.name, "backend class"):
+                adapter._hook_run(cls)
+
+        setattr(base, "__init_subclass__", classmethod(hook_subclass))
+        self._subclass_hook = (base, original)
+
+    def _make_run_wrapper(self, original_run: Callable) -> Callable:
+        """Create a wrapper for a backend's run method."""
+        adapter = self
+
+        @functools.wraps(original_run)
+        def wrapped_run(self_backend: Any, *args: Any, **kwargs: Any) -> Any:
+            if _in_backend_run.get():
+                # A delegate running on behalf of the backend the caller passed.
+                return original_run(self_backend, *args, **kwargs)
+
+            with capture_guard(adapter.name, "backend.run"):
+                circuits = args[0] if args else kwargs.get("circuits")
+                if circuits is not None:
+                    adapter._capture_circuits_from_run(circuits)
+                adapter._capture_backend(self_backend)
+
+            token = _in_backend_run.set(True)
+            try:
+                job = original_run(self_backend, *args, **kwargs)
+            finally:
+                _in_backend_run.reset(token)
+
+            with capture_guard(adapter.name, "job submission"):
+                adapter._watch_job(job, self_backend, kwargs)
+
+            return job
+
+        wrapped_run._qbom_wrapped = True
+        return wrapped_run
 
     def _watch_job(self, job: Any, backend: Any, run_kwargs: dict[str, Any]) -> None:
         """Record what run() was given, and wrap the job's result() call."""
@@ -429,5 +494,13 @@ class QiskitAdapter(Adapter):
 
     def uninstall(self) -> None:
         """Remove Qiskit hooks."""
+        if self._subclass_hook is not None:
+            base, original = self._subclass_hook
+            if original is None:
+                delattr(base, "__init_subclass__")
+            else:
+                setattr(base, "__init_subclass__", original)
+            self._subclass_hook = None
+
         self._unwrap_all()
         self._installed = False
