@@ -4,10 +4,16 @@ Checking a QBOM file against the hashes it records.
 A trace carries two independent hashes, and they cover different things.
 
 The content hash covers the circuits, the transpilation, the backend, the
-qubits used, the shot count, the seed and the recorded result hash. It is a
-computed property, so it is recalculated from the loaded trace and compared
-against the copy serialised in the file. That catches an edited shot count or
-an edited backend name.
+qubits used, the shot count, the seed, the software environment, the metadata
+and the recorded result hash. It is a computed property, so it is recalculated
+from the loaded trace and compared against the copy serialised in the file.
+That catches an edited shot count, an edited backend name or an edited package
+version.
+
+Traces in format 1.0, written by qbom 0.1.x, were hashed without the
+environment and the metadata. Each trace records its format, and is checked
+against the content its own format hashed, so those traces still verify, and
+the check says that their environment and metadata are not covered.
 
 The result hash covers the measurement counts. The content hash covers the
 result hash but not the counts themselves, so counts can be rewritten without
@@ -32,7 +38,7 @@ from typing import Any
 
 from qbom.core.hashing import result_hash
 from qbom.core.timeutil import as_utc
-from qbom.core.trace import Trace
+from qbom.core.trace import HASHED_CONTENT, TRACE_FORMAT, Trace
 
 #: The check established what it names.
 PASSED = "passed"
@@ -139,6 +145,11 @@ def _check_content_hash(raw: dict[str, Any], trace: Trace) -> Check:
     Deleting the field is indistinguishable from never having written one, and
     every trace QBOM has written carries it, so an absent value is treated as
     the tampering it would otherwise be a way around.
+
+    A trace format this release does not know fails for the same reason. Which
+    content was hashed is read from the format, so an unknown one leaves
+    nothing to compare against, and accepting it would let a format number
+    stand in for the check.
     """
     stored = raw.get("content_hash")
     recomputed = trace.content_hash
@@ -150,15 +161,32 @@ def _check_content_hash(raw: dict[str, Any], trace: Trace) -> Check:
             f"the file records no content hash, so there is nothing to check {recomputed} against",
         )
 
-    if stored == recomputed:
-        return Check(CONTENT_HASH, PASSED, f"matches, {recomputed}")
+    covered = HASHED_CONTENT.get(trace.qbom_version)
+    if covered is None:
+        return Check(
+            CONTENT_HASH,
+            FAILED,
+            f"the file is in trace format {trace.qbom_version}, and this release of qbom reads formats "
+            f"{', '.join(HASHED_CONTENT)}, so it cannot tell what {stored} was taken over",
+        )
 
+    if stored == recomputed:
+        uncovered = [part for part in HASHED_CONTENT[TRACE_FORMAT] if part not in covered]
+        if not uncovered:
+            return Check(CONTENT_HASH, PASSED, f"matches, {recomputed}")
+        return Check(
+            CONTENT_HASH,
+            PASSED,
+            f"matches, {recomputed}. Format {trace.qbom_version} traces were hashed without the "
+            f"{' and the '.join(uncovered)}, so {'those are' if len(uncovered) > 1 else 'that is'} not checked",
+        )
+
+    changed = ", ".join(covered[:-1]) + " or " + covered[-1]
     return Check(
         CONTENT_HASH,
         FAILED,
         f"the file records {stored}, its content hashes to {recomputed}. "
-        "Circuits, transpilation, backend, qubits used, shots, seed or the recorded result hash "
-        "changed after this trace was written",
+        f"{changed[0].upper()}{changed[1:]} changed after this trace was written",
     )
 
 

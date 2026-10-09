@@ -345,9 +345,9 @@ $ qbom verify experiment.qbom.json
 
 QBOM Verification
 
-  ✓ QBOM document structure: QBOM 1.0 trace qbom_ba1d3fbe
-  ✓ Content hash against trace content: matches, 0909d25f80c0f8cf
-  ✓ Result hash against recorded counts: matches, 6c6cb00ac5a34314 over 2
+  ✓ QBOM document structure: QBOM 1.1 trace qbom_04b85c65
+  ✓ Content hash against trace content: matches, ae7fde51df02706e
+  ✓ Result hash against recorded counts: matches, 2326158e16888826 over 2
 outcomes
   ✓ Execution timestamp order: in order, submitted_at then completed_at
 
@@ -364,8 +364,8 @@ $ qbom verify tampered.qbom.json
 
 QBOM Verification
 
-  ✓ QBOM document structure: QBOM 1.0 trace qbom_f71674c9
-  ✓ Content hash against trace content: matches, fce1733fa9b3355d
+  ✓ QBOM document structure: QBOM 1.1 trace qbom_04b85c65
+  ✓ Content hash against trace content: matches, ae7fde51df02706e
   ✗ Result hash against recorded counts: the file records 2326158e16888826,
 its counts hash to dc0603dc165dd60e. The measurement outcomes changed after
 this trace was written
@@ -377,11 +377,49 @@ $ echo $?
 1
 ```
 
+A file whose package list was edited after it was written:
+
+```bash
+$ qbom verify forged.qbom.json
+
+QBOM Verification
+
+  ✓ QBOM document structure: QBOM 1.1 trace qbom_04b85c65
+  ✗ Content hash against trace content: the file records ae7fde51df02706e,
+its content hashes to 219945a40539a631. Circuits, transpilation, backend,
+qubits used, shots, seed, environment, metadata or the recorded result hash
+changed after this trace was written
+  ✓ Result hash against recorded counts: matches, 2326158e16888826 over 2
+outcomes
+  ✓ Execution timestamp order: in order, submitted_at then completed_at
+
+VERDICT: verification failed (Content hash against trace content)
+
+$ echo $?
+1
+```
+
 The content hash covers the circuits, the transpilation, the backend, the
-qubits used, the shot count, the seed and the recorded result hash. It does
-not cover the counts themselves, so rewriting only the counts leaves it
-matching. That case is caught by recomputing the result hash, which is why
-both checks run and neither substitutes for the other.
+qubits used, the shot count, the seed, the software environment (Python
+version, platform and every package), the metadata (name, description, tags,
+authors, paper and experiment id) and the recorded result hash. It does not
+cover the counts themselves, so rewriting only the counts leaves it matching.
+That case is caught by recomputing the result hash, which is why both checks
+run and neither substitutes for the other.
+
+Each trace records its format in `qbom_version`. Traces in format 1.0, written
+by qbom 0.1.1 and earlier, were hashed without the environment and the
+metadata. They still verify, against the content their format covered, and
+the check says what it could not cover:
+
+```
+  ✓ Content hash against trace content: matches, fce1733fa9b3355d. Format 1.0
+traces were hashed without the environment and the metadata, so those are not
+checked
+```
+
+A file in a format this release does not know fails the content hash check,
+because there is no way to tell what its hash was taken over.
 
 A line marked `?` is a check that could not run, and it establishes nothing.
 A result that is not counts, an expectation value for instance, is hashed over

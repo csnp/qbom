@@ -26,6 +26,42 @@ from qbom.core.models import (
 )
 from qbom.core.timeutil import utc_now
 
+#: The trace format this release writes, recorded in `Trace.qbom_version`.
+TRACE_FORMAT = "1.1"
+
+#: What the content hash covers, by trace format. A trace's hash is recomputed
+#: over the content its own format hashed, so a trace written before a format
+#: change still verifies, and which shape applies is read from the version the
+#: file records rather than guessed from the fields it happens to carry.
+#:
+#: Format 1.0, written by qbom 0.1.x, left the software environment and the
+#: metadata outside the hash, so a forged package list verified clean. Format
+#: 1.1 covers both. A change to what is hashed is a new format, never an edit
+#: to an existing entry: every trace already written in a format records a hash
+#: taken over exactly that format's content.
+HASHED_CONTENT: dict[str, tuple[str, ...]] = {
+    "1.0": (
+        "circuits",
+        "transpilation",
+        "backend",
+        "qubits used",
+        "shots",
+        "seed",
+        "the recorded result hash",
+    ),
+    "1.1": (
+        "circuits",
+        "transpilation",
+        "backend",
+        "qubits used",
+        "shots",
+        "seed",
+        "environment",
+        "metadata",
+        "the recorded result hash",
+    ),
+}
+
 
 def _generate_id() -> str:
     """Generate a short, memorable trace ID."""
@@ -104,7 +140,7 @@ class Trace(BaseModel):
 
     # Identity
     id: str = Field(default_factory=_generate_id)
-    qbom_version: str = "1.0"
+    qbom_version: str = TRACE_FORMAT
     created_at: datetime = Field(default_factory=utc_now)
 
     # Core components
@@ -150,9 +186,15 @@ class Trace(BaseModel):
 
         This hash uniquely identifies the experiment based on its content,
         enabling verification that results haven't been tampered with.
+
+        It is taken over what `HASHED_CONTENT` lists for the trace's format,
+        `qbom_version`. A format this release does not know is hashed as the
+        current one, and verification reports it as unknown rather than
+        comparing.
         """
-        # Hash the core scientific content (not metadata or timestamps)
-        content = {
+        # The scientific content, which every format hashes. Timestamps are
+        # outside it in every format.
+        content: dict[str, Any] = {
             "circuits": [c.hash for c in self.circuits],
             "transpilation": self.transpilation.model_dump() if self.transpilation else None,
             "hardware": {
@@ -165,6 +207,17 @@ class Trace(BaseModel):
             },
             "result_hash": self.result.hash if self.result else None,
         }
+        if self.qbom_version != "1.0":
+            # Dumped without None fields, so an optional field added to either
+            # model later does not move the hash of a trace already written.
+            # `quantum_sdk` is derived from the packages, which are hashed, and
+            # is left out so a change to how it is derived cannot do so either.
+            content["environment"] = (
+                self.environment.model_dump(mode="json", exclude_none=True, exclude={"quantum_sdk"})
+                if self.environment
+                else None
+            )
+            content["metadata"] = self.metadata.model_dump(mode="json", exclude_none=True)
         serialized = json.dumps(content, sort_keys=True, default=str)
         return hashlib.sha256(serialized.encode()).hexdigest()[:16]
 

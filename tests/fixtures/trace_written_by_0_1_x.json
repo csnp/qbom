@@ -1,0 +1,219 @@
+{
+  "id": "qbom_f71674c9",
+  "qbom_version": "1.0",
+  "created_at": "2026-08-05T23:43:38.536895",
+  "environment": {
+    "python": "3.14.3",
+    "platform": "macOS-26.5.2-arm64-arm-64bit-Mach-O",
+    "packages": [
+      {
+        "name": "cirq-pasqal",
+        "version": "1.7.0",
+        "purl": "pkg:pypi/cirq-pasqal@1.7.0"
+      },
+      {
+        "name": "cirq-core",
+        "version": "1.7.0",
+        "purl": "pkg:pypi/cirq-core@1.7.0"
+      },
+      {
+        "name": "pennylane",
+        "version": "0.45.1",
+        "purl": "pkg:pypi/pennylane@0.45.1"
+      },
+      {
+        "name": "cirq-ionq",
+        "version": "1.7.0",
+        "purl": "pkg:pypi/cirq-ionq@1.7.0"
+      },
+      {
+        "name": "cirq-web",
+        "version": "1.7.0",
+        "purl": "pkg:pypi/cirq-web@1.7.0"
+      },
+      {
+        "name": "qiskit",
+        "version": "2.5.1",
+        "purl": "pkg:pypi/qiskit@2.5.1"
+      },
+      {
+        "name": "cirq",
+        "version": "1.7.0",
+        "purl": "pkg:pypi/cirq@1.7.0"
+      },
+      {
+        "name": "cirq-google",
+        "version": "1.7.0",
+        "purl": "pkg:pypi/cirq-google@1.7.0"
+      },
+      {
+        "name": "pennylane_lightning",
+        "version": "0.45.0",
+        "purl": "pkg:pypi/pennylane_lightning@0.45.0"
+      },
+      {
+        "name": "qiskit-aer",
+        "version": "0.17.2",
+        "purl": "pkg:pypi/qiskit-aer@0.17.2"
+      },
+      {
+        "name": "cirq-aqt",
+        "version": "1.7.0",
+        "purl": "pkg:pypi/cirq-aqt@1.7.0"
+      },
+      {
+        "name": "numpy",
+        "version": "2.5.1",
+        "purl": "pkg:pypi/numpy@2.5.1"
+      },
+      {
+        "name": "scipy",
+        "version": "1.18.0",
+        "purl": "pkg:pypi/scipy@1.18.0"
+      }
+    ],
+    "timestamp": "2026-08-05T23:43:38.003236",
+    "quantum_sdk": "qiskit==2.5.1"
+  },
+  "circuits": [
+    {
+      "name": "input",
+      "num_qubits": 2,
+      "num_clbits": 2,
+      "depth": 3,
+      "gates": {
+        "single_qubit": 1,
+        "two_qubit": 1,
+        "total": 4,
+        "by_name": {
+          "measure": 2,
+          "h": 1,
+          "cx": 1
+        }
+      },
+      "hash": "bd532e30bfec2331",
+      "summary": "input (2q, depth 3, 4 gates)"
+    },
+    {
+      "name": "input",
+      "num_qubits": 2,
+      "num_clbits": 2,
+      "depth": 3,
+      "gates": {
+        "single_qubit": 1,
+        "two_qubit": 1,
+        "total": 4,
+        "by_name": {
+          "measure": 2,
+          "h": 1,
+          "cx": 1
+        }
+      },
+      "hash": "bd532e30bfec2331",
+      "summary": "input (2q, depth 3, 4 gates)"
+    },
+    {
+      "name": "circuit-46",
+      "num_qubits": 2,
+      "num_clbits": 2,
+      "depth": 3,
+      "gates": {
+        "single_qubit": 1,
+        "two_qubit": 1,
+        "total": 4,
+        "by_name": {
+          "measure": 2,
+          "h": 1,
+          "cx": 1
+        }
+      },
+      "hash": "bd532e30bfec2331",
+      "summary": "circuit-46 (2q, depth 3, 4 gates)"
+    }
+  ],
+  "transpilation": {
+    "optimization_level": 3,
+    "input_circuit": {
+      "name": "circuit-46",
+      "num_qubits": 2,
+      "num_clbits": 2,
+      "depth": 3,
+      "gates": {
+        "single_qubit": 1,
+        "two_qubit": 1,
+        "total": 4,
+        "by_name": {
+          "measure": 2,
+          "h": 1,
+          "cx": 1
+        }
+      },
+      "hash": "bd532e30bfec2331",
+      "summary": "circuit-46 (2q, depth 3, 4 gates)"
+    },
+    "output_circuit": {
+      "name": "circuit-46",
+      "num_qubits": 2,
+      "num_clbits": 2,
+      "depth": 3,
+      "gates": {
+        "single_qubit": 1,
+        "two_qubit": 1,
+        "total": 4,
+        "by_name": {
+          "measure": 2,
+          "h": 1,
+          "cx": 1
+        }
+      },
+      "hash": "bd532e30bfec2331",
+      "summary": "circuit-46 (2q, depth 3, 4 gates)"
+    },
+    "depth_increase": 1.0
+  },
+  "hardware": {
+    "provider": "Aer (Local)",
+    "backend": "aer_simulator",
+    "num_qubits": 32,
+    "qubits_used": [],
+    "is_simulator": true,
+    "summary": "aer_simulator (simulator)"
+  },
+  "execution": {
+    "job_id": "cb8b984b-7989-4a1e-9051-ae65a6baa67f",
+    "shots": 4096,
+    "submitted_at": "2026-08-05T23:43:38.536604",
+    "completed_at": "2026-08-05T23:43:38.536621"
+  },
+  "result": {
+    "counts": {
+      "raw": {
+        "11": 2074,
+        "00": 2022
+      },
+      "shots": 4096,
+      "probabilities": {
+        "11": 0.50634765625,
+        "00": 0.49365234375
+      },
+      "top_results": [
+        [
+          "11",
+          0.50634765625
+        ],
+        [
+          "00",
+          0.49365234375
+        ]
+      ]
+    },
+    "metadata": {},
+    "hash": "2326158e16888826"
+  },
+  "metadata": {
+    "tags": [],
+    "authors": []
+  },
+  "summary": "3 circuits | on aer_simulator | 4,096 shots",
+  "content_hash": "fce1733fa9b3355d"
+}
