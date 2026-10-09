@@ -112,8 +112,10 @@ class DriftAnalysis:
     gate_drift: list[GateDrift]
 
     # Summary metrics
-    overall_drift_score: float  # 0-100, higher = more drift
-    reproduction_feasibility: str  # "High", "Medium", "Low", "Very Low"
+    # 0-100, higher = more drift. None when drift does not apply: a simulator
+    # run with no calibration has no hardware state that could have drifted.
+    overall_drift_score: float | None
+    reproduction_feasibility: str  # "High", "Medium", "Low", "Very Low", "Not applicable"
 
     # Recommendations
     recommendations: list[str]
@@ -122,7 +124,7 @@ class DriftAnalysis:
     @property
     def has_significant_drift(self) -> bool:
         """True if overall drift is concerning."""
-        return self.overall_drift_score > 20
+        return self.overall_drift_score is not None and self.overall_drift_score > 20
 
     def summary(self) -> str:
         """Human-readable summary."""
@@ -132,11 +134,12 @@ class DriftAnalysis:
         else:
             time_str = "unknown time"
 
-        return (
-            f"Drift Score: {self.overall_drift_score:.0f}/100 | "
-            f"Elapsed: {time_str} | "
-            f"Reproduction: {self.reproduction_feasibility}"
-        )
+        if self.overall_drift_score is None:
+            score_str = "not applicable"
+        else:
+            score_str = f"{self.overall_drift_score:.0f}/100 (higher means more drift)"
+
+        return f"Drift Score: {score_str} | Elapsed: {time_str} | Reproduction: {self.reproduction_feasibility}"
 
 
 def analyze_drift(
@@ -159,6 +162,24 @@ def analyze_drift(
 
     hw = trace.hardware
     original_cal = hw.calibration
+
+    if not original_cal and hw.is_simulator:
+        # A simulator has no calibration to capture, so its absence says
+        # nothing about drift, and no drift score or feasibility was measured.
+        return DriftAnalysis(
+            original_calibration_time=None,
+            current_calibration_time=current_calibration.timestamp if current_calibration else None,
+            time_elapsed=None,
+            qubit_drift=[],
+            gate_drift=[],
+            overall_drift_score=None,
+            reproduction_feasibility="Not applicable",
+            recommendations=[
+                f"{hw.backend} is a simulator, so calibration drift does not apply",
+                "A re-run can still return different counts unless the simulator is seeded",
+            ],
+            better_qubits=None,
+        )
 
     if not original_cal:
         # No original calibration - can only provide recommendations

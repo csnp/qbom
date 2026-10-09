@@ -290,11 +290,17 @@ def drift(trace_id: str) -> None:
     }
     color = feasibility_colors.get(result.reproduction_feasibility, "white")
 
+    # The drift score runs the opposite way to the reproducibility score, so
+    # it always says which way it runs.
+    if result.overall_drift_score is None:
+        score_line = "Drift Score: [bold]not applicable[/bold] (simulator, no hardware calibration)"
+    else:
+        score_line = f"Drift Score: [bold]{result.overall_drift_score:.0f}/100[/bold] (higher means more drift)"
+
     console.print()
     console.print(
         Panel(
-            f"Drift Score: [bold]{result.overall_drift_score:.0f}/100[/bold]\n"
-            f"Reproduction Feasibility: [bold {color}]{result.reproduction_feasibility}[/bold {color}]",
+            f"{score_line}\nReproduction Feasibility: [bold {color}]{result.reproduction_feasibility}[/bold {color}]",
             title="Calibration Drift Analysis",
             subtitle=trace.id,
         )
