@@ -66,6 +66,16 @@ def test_present_trace_exits_zero(saved_trace, tmp_path, command):
 
     result = CliRunner().invoke(main, argv)
 
+    if command[0] == "validate":
+        # validate's exit status follows its verdict, and this empty trace
+        # fails validation. Found, but failing, is exit 1 with the verdict
+        # printed, not "not found". tests/test_validate_gates_and_cli_json.py
+        # covers a found trace that passes.
+        assert result.exit_code == 1, result.output
+        assert "FAIL" in result.output
+        assert "not found" not in result.output.lower()
+        return
+
     assert result.exit_code == 0, result.output
 
 

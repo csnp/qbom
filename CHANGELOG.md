@@ -7,6 +7,12 @@ this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+
+- `--json` on `qbom validate`, `qbom score` and `qbom list`, so a script can
+  read their results without parsing the console tables
+  ([#6](https://github.com/csnp/qbom/issues/6)).
+
 ### Fixed
 
 - **The recorded backend is the one the caller passed to `run()`**
@@ -82,6 +88,14 @@ this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   states its direction, "higher means more drift", since it runs the opposite
   way to the reproducibility score from `qbom score`. Hardware traces are
   scored as before.
+- `qbom validate` exits 1 when its verdict is FAIL, with or without
+  `--publication` and `--json`, so a CI step can gate on it. PASS and WARNINGS
+  still exit 0 ([#6](https://github.com/csnp/qbom/issues/6)).
+- The fix text `qbom validate` prints for a trace without QASM now runs as
+  written against Qiskit 1.0 and newer. It called `QuantumCircuit.qasm()`, which
+  Qiskit 1.0 removed, and assigned to a field of a read-only model. It is no
+  longer wrapped or read as console markup, so it can be copied from the
+  terminal intact ([#6](https://github.com/csnp/qbom/issues/6)).
 
 ## [0.1.1] - 2026-08-21
 
