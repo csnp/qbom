@@ -144,15 +144,24 @@ $ qbom export <your-trace-id> homework3.qbom.json
 ```
 
 **Grading:**
+
+The commands below take a trace id, not a file. Check each submitted file,
+then add it to your trace store under the id the check reports (see
+[Trace files](CLI.md#trace-files)).
+
 ```bash
-# Quick verification
-$ qbom show homework3.qbom.json
+# Check the file and read its trace id from the document structure line
+$ qbom verify homework3.qbom.json
+$ cp homework3.qbom.json ~/.qbom/traces/<student-trace-id>.json
+
+# Quick look
+$ qbom show <student-trace-id>
 
 # Check they used required parameters
-$ qbom validate homework3.qbom.json
+$ qbom validate <student-trace-id>
 
-# Compare to reference solution
-$ qbom diff reference.qbom.json homework3.qbom.json
+# Compare to the reference solution, added to the store the same way
+$ qbom diff <reference-trace-id> <student-trace-id>
 ```
 
 ---
@@ -170,6 +179,7 @@ You're comparing three quantum algorithms and need to ensure fair comparison:
 
 ```python
 import qbom
+from qbom import Session
 
 algorithms = ["grover", "vqe", "qaoa"]
 
@@ -177,10 +187,15 @@ for algo in algorithms:
     with qbom.experiment(f"Benchmark: {algo}", tags=["benchmark"]):
         run_algorithm(algo)
 
-# Compare all three
-$ qbom list --tag benchmark
+# Find the three runs by their tag. qbom list has no tag filter, so filter
+# the recent traces in Python.
+for trace in Session.get().list_traces(limit=50):
+    if "benchmark" in trace.metadata.tags:
+        print(trace.id, trace.metadata.name)
+```
 
-# Verify fair comparison
+```bash
+# Verify fair comparison, using the ids printed above
 $ qbom diff qbom_grover qbom_vqe
 $ qbom diff qbom_vqe qbom_qaoa
 ```
@@ -246,14 +261,17 @@ $ qbom export qbom_initial_result experiment_v1.qbom.json
 $ git add experiment_v1.qbom.json
 $ git commit -m "Initial VQE results"
 
-# Institution B reproduces and extends
-$ qbom show experiment_v1.qbom.json  # See exact setup
+# Institution B checks the file, then adds it to its trace store under the
+# id the check reports (commands other than verify take an id, not a file)
+$ qbom verify experiment_v1.qbom.json  # Integrity check, names the trace id
+$ cp experiment_v1.qbom.json ~/.qbom/traces/qbom_initial_result.json
+$ qbom show qbom_initial_result  # See exact setup
 $ # Run their own experiment
-$ qbom diff experiment_v1.qbom.json qbom_our_run  # Compare
+$ qbom diff qbom_initial_result qbom_our_run  # Compare
 
-# Institution C reviews both
-$ qbom verify experiment_v1.qbom.json  # Integrity check
-$ qbom score experiment_v1.qbom.json   # Reproducibility assessment
+# Institution C reviews both, adding the file the same way
+$ qbom verify experiment_v1.qbom.json   # Integrity check
+$ qbom score qbom_initial_result        # Reproducibility assessment
 ```
 
 ---
@@ -348,13 +366,18 @@ $ qbom export <trace-id> bug_report.qbom.json
 
 **Support reviews:**
 ```bash
-$ qbom show bug_report.qbom.json
+# Check the file, then add it to the trace store under the id the check
+# reports. Commands other than verify take an id, not a file.
+$ qbom verify bug_report.qbom.json
+$ cp bug_report.qbom.json ~/.qbom/traces/<customer-trace-id>.json
+
+$ qbom show <customer-trace-id>
 
 # Environment: Python 3.9.1 (we require 3.10+)
 # qiskit: 0.45.0 (outdated, known bug)
 # Backend: local simulator (not real hardware)
 
-$ qbom validate bug_report.qbom.json
+$ qbom validate <customer-trace-id>
 # Warning: qiskit version 0.45.0 has known issues with...
 ```
 

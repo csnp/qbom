@@ -203,9 +203,15 @@ This means QBOM traces work with existing software supply chain tools.
 
 ### Installation
 
+QBOM is not published on PyPI. Install it from a clone of the repository:
+
 ```bash
-pip install qbom
+git clone https://github.com/csnp/qbom.git
+cd qbom
+pip install -e ".[qiskit]"
 ```
+
+See the [Installation Guide](INSTALLATION.md) for the other framework extras.
 
 ### Basic Usage
 

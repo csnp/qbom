@@ -59,7 +59,7 @@ qbom show TRACE_ID
 
 | Argument | Description |
 |----------|-------------|
-| `TRACE_ID` | Trace ID or path to trace file |
+| `TRACE_ID` | Trace ID, or part of one. Not a file path; see [Trace files](#trace-files) |
 
 **Example:**
 
@@ -92,7 +92,7 @@ qbom score TRACE_ID
 
 | Argument | Description |
 |----------|-------------|
-| `TRACE_ID` | Trace ID or path to trace file |
+| `TRACE_ID` | Trace ID, or part of one. Not a file path; see [Trace files](#trace-files) |
 
 **Example:**
 
@@ -143,7 +143,7 @@ qbom validate TRACE_ID [OPTIONS]
 
 | Argument | Description |
 |----------|-------------|
-| `TRACE_ID` | Trace ID or path to trace file |
+| `TRACE_ID` | Trace ID, or part of one. Not a file path; see [Trace files](#trace-files) |
 
 **Options:**
 
@@ -226,7 +226,7 @@ qbom drift TRACE_ID
 
 | Argument | Description |
 |----------|-------------|
-| `TRACE_ID` | Trace ID or path to trace file |
+| `TRACE_ID` | Trace ID, or part of one. Not a file path; see [Trace files](#trace-files) |
 
 **Example:**
 
@@ -257,7 +257,7 @@ qbom export TRACE_ID OUTPUT_FILE [OPTIONS]
 
 | Argument | Description |
 |----------|-------------|
-| `TRACE_ID` | Trace ID or path to trace file |
+| `TRACE_ID` | Trace ID, or part of one. Not a file path; see [Trace files](#trace-files) |
 | `OUTPUT_FILE` | Output file path |
 
 **Options:**
@@ -278,7 +278,7 @@ qbom export qbom_c4b17b13 trace.cdx.json -f cyclonedx
 # Export as SPDX SBOM
 qbom export qbom_c4b17b13 trace.spdx.json -f spdx
 
-# Export as YAML. Needs PyYAML: pip install "qbom[yaml]"
+# Export as YAML. Needs PyYAML: pip install -e ".[yaml]" in the checkout
 qbom export qbom_c4b17b13 trace.yaml -f yaml
 ```
 
@@ -296,7 +296,7 @@ qbom paper TRACE_ID
 
 | Argument | Description |
 |----------|-------------|
-| `TRACE_ID` | Trace ID or path to trace file |
+| `TRACE_ID` | Trace ID, or part of one. Not a file path; see [Trace files](#trace-files) |
 
 **Example:**
 
@@ -392,36 +392,59 @@ reported that way rather than as verified.
 
 ### qbom init
 
-Initialize QBOM in the current project.
+Print how to enable capture in a script or notebook.
 
 ```bash
 qbom init
 ```
 
-Creates a `.qbom/` directory in the current project for project-specific configuration.
+It creates no files and changes nothing. Capture needs no setup beyond
+`import qbom`.
 
 **Example:**
 
 ```bash
 $ qbom init
-Initialized QBOM in /path/to/project/.qbom/
+QBOM Initialization
+
+Add this to your Python scripts or notebooks:
+
+import qbom  # That's it!
+
+Your experiments will be automatically captured.
+Traces stored in: ~/.qbom/traces/
 ```
 
 ---
 
-## Environment Variables
+## Trace files
 
-| Variable | Description |
-|----------|-------------|
-| `QBOM_STORAGE_PATH` | Override default trace storage location |
-| `QBOM_AUTO_SAVE` | Set to `0` to disable automatic trace saving |
+Every command except `qbom verify` takes a trace id and reads the trace from
+the trace store, `~/.qbom/traces/`, where each trace is a file named
+`<trace-id>.json`. A file path given in place of an id is refused with
+`Trace not found`.
 
-**Example:**
+To work with a trace file someone sent you, check it, then add it to your store
+under its id:
 
 ```bash
-export QBOM_STORAGE_PATH=/custom/path/traces
-export QBOM_AUTO_SAVE=0
+# Check the file. The document structure line names its trace id.
+$ qbom verify homework3.qbom.json
+
+QBOM Verification
+
+  ✓ QBOM document structure: QBOM 1.0 trace qbom_5e0a91c2
+  ...
+
+# Add it to your trace store under that id
+$ cp homework3.qbom.json ~/.qbom/traces/qbom_5e0a91c2.json
+
+# Every other command now finds it
+$ qbom show qbom_5e0a91c2
 ```
+
+QBOM reads no environment variables of its own. The store is always
+`~/.qbom/traces/` in the home directory of the user running it.
 
 ---
 
@@ -430,9 +453,11 @@ export QBOM_AUTO_SAVE=0
 | Code | Description |
 |------|-------------|
 | 0 | Success |
-| 1 | General error |
-| 2 | Trace not found |
-| 3 | Invalid input |
+| 1 | The trace was not found or could not be read, an export failed, or `qbom verify` found a hash that does not match |
+| 2 | Usage error: an unknown command or option, a missing argument, or a `qbom verify` file that does not exist |
+
+`qbom validate` exits 0 even when it reports FAIL
+([#6](https://github.com/csnp/qbom/issues/6)), so it cannot yet gate a CI step.
 
 ---
 

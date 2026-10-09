@@ -219,7 +219,7 @@ Recommendations:
 qbom export <id> trace.json              # JSON (default)
 qbom export <id> trace.cdx.json -f cyclonedx   # CycloneDX SBOM
 qbom export <id> trace.spdx.json -f spdx       # SPDX SBOM
-qbom export <id> trace.yaml -f yaml            # YAML, needs pip install "qbom[yaml]"
+qbom export <id> trace.yaml -f yaml            # YAML, needs pip install -e ".[yaml]"
 ```
 
 ---

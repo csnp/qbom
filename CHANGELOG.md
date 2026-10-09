@@ -20,6 +20,23 @@ this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   after `import qbom`, and only the outermost `run()` of a call is recorded. A
   calibration captured earlier in the trace is kept when a later read of the
   same backend returns none, and is never carried to a different backend.
+- **The documentation shows only commands, options and functions that exist**
+  ([#7](https://github.com/csnp/qbom/issues/7)). The CLI reference said a trace
+  id could be a path to a trace file, and three workflows in
+  `docs/USE-CASES.md` passed one. Every command except `qbom verify` takes an
+  id, so the docs now show how to add a received file to the trace store.
+  `qbom list --tag`, the `QBOM_STORAGE_PATH` and `QBOM_AUTO_SAVE` variables,
+  and the configuration `qbom init` was said to create do not exist and are no
+  longer documented. The `qbom.analysis` examples in `docs/API.md` and
+  `docs/USAGE.md` called `calculate_score`, `validate_trace(trace,
+  publication=True)` and `result.drift_score`; they now use `compute_score`,
+  `validate_for_publication` and `overall_drift_score`, and handle the `None`
+  that `analyze_drift` returns for a trace with no hardware. The notebook
+  example imported a `display_trace` that does not exist. `pip install qbom`
+  and `pip install "qbom[yaml]"` are replaced with the install from a clone,
+  since the package is not on PyPI. A test now checks every `qbom` command,
+  qbom import, trace attribute and API reference name the docs show against
+  the CLI and the package, and runs the analysis examples.
 
 ## [0.1.1] - 2026-08-21
 

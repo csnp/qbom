@@ -214,8 +214,10 @@ trace  # Displays formatted trace in notebook
 You can also use:
 
 ```python
-from qbom.notebook import display_trace
-display_trace(trace)
+from IPython.display import HTML
+from qbom.notebook import trace_to_html
+
+HTML(trace_to_html(trace))
 ```
 
 ## Analyzing Traces
@@ -223,16 +225,16 @@ display_trace(trace)
 ### Reproducibility Score
 
 ```python
-from qbom.analysis import calculate_score
+from qbom.analysis import compute_score
 
 trace = qbom.current()
-result = calculate_score(trace)
+result = compute_score(trace)
 
-print(f"Score: {result.total_score}/100")
+print(f"Score: {result.total_score}/{result.max_score}")
 print(f"Grade: {result.grade}")
 
 for component in result.components:
-    print(f"  {component.name}: {component.score}/{component.max_score}")
+    print(f"  {component.name}: {component.earned_points}/{component.max_points}")
 ```
 
 ### Validation
@@ -248,6 +250,9 @@ for issue in result.issues:
     print(f"  [{issue.level}] {issue.message}")
 ```
 
+For the stricter checks `qbom validate --publication` applies, call
+`validate_for_publication(trace)` from the same module.
+
 ### Calibration Drift
 
 ```python
@@ -256,8 +261,11 @@ from qbom.analysis import analyze_drift
 trace = qbom.current()
 result = analyze_drift(trace)
 
-print(f"Drift Score: {result.drift_score}")
-print(f"Feasibility: {result.reproduction_feasibility}")
+if result is None:
+    print("No hardware recorded, so there is no calibration to compare")
+else:
+    print(f"Drift Score: {result.overall_drift_score:.0f}/100")
+    print(f"Feasibility: {result.reproduction_feasibility}")
 ```
 
 ## Best Practices
