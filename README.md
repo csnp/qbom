@@ -169,7 +169,7 @@ qbom score <trace-id>
 | Framework | Status |
 |-----------|--------|
 | **Qiskit** | Full support |
-| **Cirq** | Supported, with a known display defect. Capture works and the trace is written, but a run also writes a second empty trace and `qbom.show()` displays that one. Use `qbom list` to find the populated trace. See [#8](https://github.com/csnp/qbom/issues/8). |
+| **Cirq** | Supported. In 0.1.1 a run also writes a second, empty trace and `qbom.show()` displays that one; use `qbom list` to find the populated trace. Fixed after 0.1.1, see [#8](https://github.com/csnp/qbom/issues/8). |
 | **PennyLane** | Supported |
 | **Braket** | Planned |
 
