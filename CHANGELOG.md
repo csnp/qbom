@@ -70,6 +70,18 @@ this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   watched package is now installed once, so a run writes one trace, it records
   the circuit once, and `qbom.current()` returns it. The empty traces that
   earlier runs left in `~/.qbom/traces` are not removed.
+- **`qbom drift` reported maximum drift for local simulators**
+  ([#13](https://github.com/csnp/qbom/issues/13)). A run on `aer_simulator`,
+  `cirq.Simulator` or `generic_backend_5q` has no hardware calibration, and
+  drift treated that as hardware whose calibration went uncaptured: a drift
+  score of 100/100, "Very Low" reproduction feasibility, and a prediction that
+  a re-run would likely produce different results, none of it measured. A
+  simulator trace with no calibration now reports that drift does not apply,
+  with no score, and `analyze_drift` returns `overall_drift_score=None` and
+  `reproduction_feasibility="Not applicable"` for it. The drift score also
+  states its direction, "higher means more drift", since it runs the opposite
+  way to the reproducibility score from `qbom score`. Hardware traces are
+  scored as before.
 
 ## [0.1.1] - 2026-08-21
 

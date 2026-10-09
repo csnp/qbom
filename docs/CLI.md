@@ -250,14 +250,33 @@ qbom drift TRACE_ID
 ```bash
 $ qbom drift qbom_c4b17b13
 
-╭────────────────────────────── Calibration Drift ─────────────────────────────╮
-│ Drift Score: 35/100                                                          │
+╭───────────────────────── Calibration Drift Analysis ─────────────────────────╮
+│ Drift Score: 35/100 (higher means more drift)                                │
 │ Reproduction Feasibility: Medium                                             │
 ╰─────────────────────────────── qbom_c4b17b13 ────────────────────────────────╯
 
 Recommendations:
   • Calibration is 3 days old - expect variation
   • Significant drift on qubits: 12, 15
+```
+
+The drift score runs the opposite way to the reproducibility score from
+`qbom score`: 0 means no measured change, and a higher number means more drift.
+
+A simulator has no hardware calibration, so for a simulator run drift does not
+apply and no score is given:
+
+```bash
+$ qbom drift qbom_a5544aa9
+
+╭───────────────────────── Calibration Drift Analysis ─────────────────────────╮
+│ Drift Score: not applicable (simulator, no hardware calibration)             │
+│ Reproduction Feasibility: Not applicable                                     │
+╰─────────────────────────────── qbom_a5544aa9 ────────────────────────────────╯
+
+Recommendations:
+  • cirq.Simulator is a simulator, so calibration drift does not apply
+  • A re-run can still return different counts unless the simulator is seeded
 ```
 
 ---

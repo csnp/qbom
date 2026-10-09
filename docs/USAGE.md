@@ -264,7 +264,9 @@ result = analyze_drift(trace)
 if result is None:
     print("No hardware recorded, so there is no calibration to compare")
 else:
-    print(f"Drift Score: {result.overall_drift_score:.0f}/100")
+    # 0-100, higher means more drift. None for a simulator run, where
+    # calibration drift does not apply.
+    print(f"Drift Score: {result.overall_drift_score}")
     print(f"Feasibility: {result.reproduction_feasibility}")
 ```
 

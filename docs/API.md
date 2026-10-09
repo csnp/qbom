@@ -368,11 +368,14 @@ from qbom.analysis import analyze_drift
 
 result = analyze_drift(trace)
 if result is not None:
-    print(f"Drift: {result.overall_drift_score:.0f}/100")
+    print(f"Drift: {result.overall_drift_score}")
     print(f"Feasibility: {result.reproduction_feasibility}")
 ```
 
 **Returns:** `DriftAnalysis`, or `None` when the trace recorded no hardware.
+`overall_drift_score` runs from 0 to 100, where higher means more drift. It is
+`None`, and `reproduction_feasibility` is `"Not applicable"`, for a simulator
+run with no calibration, because there is no hardware calibration to drift.
 
 ---
 
