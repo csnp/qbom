@@ -6,8 +6,9 @@ Beautiful command-line interface for managing quantum experiment traces.
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 import click
 from rich.console import Console
@@ -75,6 +76,17 @@ def _read_trace_file(path: Path) -> Trace:
         ) from exc
 
 
+def _echo_json(value: Any) -> None:
+    """
+    Write a --json result to stdout.
+
+    Written with click rather than the rich console, which would wrap long
+    lines and add highlighting, so the output parses as JSON whatever the
+    terminal width.
+    """
+    click.echo(json.dumps(value, indent=2, ensure_ascii=False))
+
+
 @click.group()
 @click.version_option(message="QBOM %(version)s")
 def main() -> None:
@@ -90,13 +102,34 @@ def main() -> None:
 
 @main.command()
 @click.option("-n", "--limit", default=10, help="Number of traces to show")
-def list(limit: int) -> None:
+@click.option("--json", "as_json", is_flag=True, help="Print the traces as JSON")
+def list(limit: int, as_json: bool) -> None:
     """List recent experiment traces."""
     from qbom.cli.display import display_trace_list
     from qbom.core.session import Session
+    from qbom.core.timeutil import as_utc
 
     session = Session.get()
     traces = session.list_traces(limit=limit)
+
+    if as_json:
+        _echo_json(
+            [
+                {
+                    "id": trace.id,
+                    "createdAt": as_utc(trace.created_at).isoformat(),
+                    "name": trace.metadata.name,
+                    "summary": trace.summary,
+                    "backend": trace.hardware.backend if trace.hardware else None,
+                    "numQubits": trace.circuits[0].num_qubits if trace.circuits else None,
+                    "depth": trace.circuits[0].depth if trace.circuits else None,
+                    "shots": trace.execution.shots if trace.execution else None,
+                    "contentHash": trace.content_hash,
+                }
+                for trace in traces
+            ]
+        )
+        return
 
     if not traces:
         console.print("[dim]No traces found. Run a quantum experiment with QBOM imported.[/dim]")
@@ -195,7 +228,8 @@ def init() -> None:
 
 @main.command()
 @click.argument("trace_id")
-def score(trace_id: str) -> None:
+@click.option("--json", "as_json", is_flag=True, help="Print the score as JSON")
+def score(trace_id: str, as_json: bool) -> None:
     """Show reproducibility score for a trace.
 
     Computes a 0-100 score indicating how reproducible an experiment is:
@@ -212,6 +246,29 @@ def score(trace_id: str) -> None:
 
     trace = _load_trace(trace_id)
     result = compute_score(trace)
+
+    if as_json:
+        _echo_json(
+            {
+                "traceId": trace.id,
+                "totalScore": result.total_score,
+                "maxScore": result.max_score,
+                "grade": result.grade,
+                "components": [
+                    {
+                        "name": component.name,
+                        "category": component.category,
+                        "earnedPoints": component.earned_points,
+                        "maxPoints": component.max_points,
+                        "status": component.status,
+                        "recommendation": component.recommendation,
+                    }
+                    for component in result.components
+                ],
+                "recommendations": result.recommendations,
+            }
+        )
+        return
 
     # Display score
     grade_colors = {
@@ -369,14 +426,19 @@ def drift(trace_id: str) -> None:
     is_flag=True,
     help="Use stricter validation for publication",
 )
-def validate(trace_id: str, publication: bool) -> None:
+@click.option("--json", "as_json", is_flag=True, help="Print the result as JSON")
+def validate(trace_id: str, publication: bool, as_json: bool) -> None:
     """Validate a trace for completeness.
 
     Checks that all required information is captured and provides
     guidance on how to fix any issues found.
 
     Use --publication for stricter checks when preparing for publication.
+
+    Exits 1 when the verdict is FAIL, and 0 when it is PASS or WARNINGS, so a
+    CI step can gate on the result.
     """
+    from rich.markup import escape
     from rich.panel import Panel
 
     from qbom.analysis import ValidationLevel, validate_for_publication, validate_trace
@@ -400,6 +462,32 @@ def validate(trace_id: str, publication: bool) -> None:
     else:
         status_color = "red"
         status_text = "FAIL"
+
+    if as_json:
+        _echo_json(
+            {
+                "traceId": trace.id,
+                "mode": "publication" if publication else "standard",
+                "verdict": status_text,
+                "isValid": result.is_valid,
+                "isComplete": result.is_complete,
+                "summary": result.summary,
+                "errorCount": result.error_count,
+                "warningCount": result.warning_count,
+                "infoCount": result.info_count,
+                "issues": [
+                    {
+                        "level": issue.level.value,
+                        "category": issue.category,
+                        "message": issue.message,
+                        "fix": issue.fix,
+                    }
+                    for issue in result.issues
+                ],
+            }
+        )
+        _exit_on_fail(result.is_valid)
+        return
 
     console.print()
     console.print(
@@ -428,8 +516,10 @@ def validate(trace_id: str, publication: bool) -> None:
                     ValidationLevel.INFO: "dim",
                 }
                 color = level_colors.get(issue.level, "white")
-                console.print(f"  [{color}]{issue.icon}[/{color}] {issue.message}")
-                console.print(f"    [dim]Fix: {issue.fix}[/dim]")
+                console.print(f"  [{color}]{issue.icon}[/{color}] {escape(issue.message)}")
+                # Escaped so brackets in fix code are not read as markup, and
+                # not wrapped so the code in it can be copied and run as one line.
+                console.print(f"    [dim]Fix: {escape(issue.fix)}[/dim]", soft_wrap=True)
 
     # Summary counts
     console.print()
@@ -439,6 +529,19 @@ def validate(trace_id: str, publication: bool) -> None:
         f"[dim]{result.info_count} info[/dim]"
     )
     console.print()
+
+    _exit_on_fail(result.is_valid)
+
+
+def _exit_on_fail(is_valid: bool) -> None:
+    """
+    End the command with exit status 1 when validation found errors.
+
+    validate used to print FAIL and exit 0, so a script or CI step had no way
+    to tell a failing trace from a passing one without parsing the output.
+    """
+    if not is_valid:
+        raise SystemExit(1)
 
 
 if __name__ == "__main__":

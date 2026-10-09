@@ -46,6 +46,21 @@ class ValidationIssue:
         return icons.get(self.level, "?")
 
 
+# How to add QASM to a trace that was written without it. The code between the
+# backticks must run as printed. It used to call QuantumCircuit.qasm(), which
+# Qiskit 1.0 removed, and assign to a field of Circuit, which is frozen, so
+# following it ended in an error either way.
+_STORE_QASM_FIX = (
+    "Store the circuit as OpenQASM so it can be rebuilt exactly. A trace is read-only, "
+    "so save an updated copy in its place. With Qiskit 1.0 or newer, where trace is this "
+    "trace (qbom.current() right after the run) and circuit is the QuantumCircuit you ran: "
+    "`from pathlib import Path; from qiskit import qasm2; "
+    'first = trace.circuits[0].model_copy(update={"qasm": qasm2.dumps(circuit)}); '
+    'trace.model_copy(update={"circuits": [first, *trace.circuits[1:]]})'
+    '.export(Path.home() / ".qbom" / "traces" / f"{trace.id}.json")`'
+)
+
+
 @dataclass
 class ValidationResult:
     """Complete validation result for a trace."""
@@ -184,8 +199,7 @@ def validate_trace(trace: Trace) -> ValidationResult:
                     level=ValidationLevel.INFO,
                     category="Circuit",
                     message="No QASM or JSON representation stored",
-                    fix="Consider storing QASM for exact circuit reproduction. "
-                    "Use trace.circuits[0].qasm = circuit.qasm() to capture.",
+                    fix=_STORE_QASM_FIX,
                 )
             )
 
@@ -468,8 +482,7 @@ def validate_for_publication(trace: Trace) -> ValidationResult:
                     level=ValidationLevel.WARNING,
                     category="Circuit",
                     message="No circuit representation for exact reproduction",
-                    fix="Store QASM or JSON representation for publication. "
-                    "This allows others to recreate your exact circuit.",
+                    fix=_STORE_QASM_FIX,
                 )
             )
 

@@ -30,6 +30,7 @@ qbom list [OPTIONS]
 | Option | Default | Description |
 |--------|---------|-------------|
 | `-n, --limit` | 10 | Number of traces to show |
+| `--json` | | Print the traces as a JSON array instead of a table |
 
 **Example:**
 
@@ -85,7 +86,7 @@ $ qbom show qbom_c4b17b13
 Calculate and display reproducibility score.
 
 ```bash
-qbom score TRACE_ID
+qbom score TRACE_ID [OPTIONS]
 ```
 
 **Arguments:**
@@ -93,6 +94,12 @@ qbom score TRACE_ID
 | Argument | Description |
 |----------|-------------|
 | `TRACE_ID` | Trace ID, or part of one. Not a file path; see [Trace files](#trace-files) |
+
+**Options:**
+
+| Option | Description |
+|--------|-------------|
+| `--json` | Print the score, its components and the recommendations as JSON |
 
 **Example:**
 
@@ -150,6 +157,14 @@ qbom validate TRACE_ID [OPTIONS]
 | Option | Description |
 |--------|-------------|
 | `--publication` | Use stricter validation for publication |
+| `--json` | Print the verdict and every issue as JSON |
+
+**Exit status:** 1 when the verdict is FAIL, 0 when it is PASS or WARNINGS, so a
+CI step can gate on it:
+
+```bash
+qbom validate qbom_c4b17b13 --publication || exit 1
+```
 
 **Example:**
 
@@ -164,7 +179,7 @@ $ qbom validate qbom_c4b17b13
 
 Circuit:
   ℹ No QASM or JSON representation stored
-    Fix: Consider storing QASM for exact circuit reproduction.
+    Fix: Store the circuit as OpenQASM so it can be rebuilt exactly. A trace is read-only, so save an updated copy in its place. With Qiskit 1.0 or newer, where trace is this trace (qbom.current() right after the run) and circuit is the QuantumCircuit you ran: `from pathlib import Path; from qiskit import qasm2; first = trace.circuits[0].model_copy(update={"qasm": qasm2.dumps(circuit)}); trace.model_copy(update={"circuits": [first, *trace.circuits[1:]]}).export(Path.home() / ".qbom" / "traces" / f"{trace.id}.json")`
 
 0 errors | 0 warnings | 1 info
 ```
