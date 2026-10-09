@@ -10,6 +10,7 @@ Captures PennyLane operations for hybrid quantum-classical workflows:
 
 from __future__ import annotations
 
+import contextvars
 import functools
 import hashlib
 from datetime import datetime
@@ -29,6 +30,13 @@ from qbom.core.timeutil import utc_now
 
 if TYPE_CHECKING:
     from qbom.core.session import Session
+
+# The QNode call in progress and the tapes `QNode.construct` built for it. A
+# QNode called inside another QNode's function sets its own entry and restores
+# the outer one when it returns.
+_CALL_IN_PROGRESS: contextvars.ContextVar[tuple[Any, list[Any]] | None] = contextvars.ContextVar(
+    "qbom_pennylane_call_in_progress", default=None
+)
 
 
 def _extract_circuit_info(tape: Any) -> Circuit:
@@ -181,6 +189,9 @@ class PennyLaneAdapter(Adapter):
             # Hook QNode.__call__
             self._hook_qnode_call(qml)
 
+            # Hook QNode.construct, which builds the tape a QNode call runs
+            self._hook_qnode_construct(qml)
+
             # Hook device creation to track devices
             self._hook_device_creation(qml)
 
@@ -204,10 +215,15 @@ class PennyLaneAdapter(Adapter):
                 with capture_guard(adapter.name, "QNode call device"):
                     adapter.session.current_builder.set_hardware(_extract_device_info(self_qnode.device))
 
-                result = original_call(self_qnode, *args, **kwargs)
+                tapes: list[Any] = []
+                token = _CALL_IN_PROGRESS.set((self_qnode, tapes))
+                try:
+                    result = original_call(self_qnode, *args, **kwargs)
+                finally:
+                    _CALL_IN_PROGRESS.reset(token)
 
                 with capture_guard(adapter.name, "QNode call result"):
-                    adapter._capture_qnode_result(self_qnode, result, submitted_at)
+                    adapter._capture_qnode_result(self_qnode, result, submitted_at, tapes[0] if tapes else None)
 
                 return result
 
@@ -220,20 +236,60 @@ class PennyLaneAdapter(Adapter):
         except Exception:
             pass
 
-    def _capture_qnode_result(self, qnode: Any, result: Any, submitted_at: datetime) -> None:
+    def _hook_qnode_construct(self, qml: Any) -> None:
+        """
+        Hook QNode.construct to keep the tape built during a QNode call.
+
+        PennyLane removed the `tape` and `qtape` attributes this adapter used to
+        read after the call. `construct` is the method every QNode call goes
+        through to build the tape it runs, on old releases and current ones.
+        Older releases store the tape on the QNode and return nothing, so the
+        attribute is read there, straight after it is written.
+        """
+        try:
+            original_construct = qml.QNode.construct
+            adapter = self
+
+            @functools.wraps(original_construct)
+            def wrapped_construct(self_qnode: Any, *args: Any, **kwargs: Any) -> Any:
+                constructed = original_construct(self_qnode, *args, **kwargs)
+
+                with capture_guard(adapter.name, "QNode tape"):
+                    call = _CALL_IN_PROGRESS.get()
+                    # Only the QNode being called. Another QNode's tape, built
+                    # by its own construct, is not this call's program.
+                    if call is not None and call[0] is self_qnode:
+                        tape = constructed
+                        if tape is None:
+                            tape = getattr(self_qnode, "tape", None)
+                        if tape is None:
+                            tape = getattr(self_qnode, "qtape", None)
+                        if tape is not None:
+                            call[1].append(tape)
+
+                return constructed
+
+            qml.QNode.construct = wrapped_construct
+            self._original_functions["pennylane.QNode.construct"] = (
+                qml.QNode,
+                "construct",
+                original_construct,
+            )
+        except Exception:
+            pass
+
+    def _capture_qnode_result(self, qnode: Any, result: Any, submitted_at: datetime, tape: Any) -> None:
         """Record the tape, the shot count and the result of a QNode call."""
         builder = self.session.current_builder
         completed_at = utc_now()
 
-        # A QNode does not always expose a tape, and reading it is the part of
-        # this most likely to move between PennyLane releases. Losing the
-        # circuit must not also lose the execution and the result below.
-        try:
-            tape = getattr(qnode, "tape", None) or getattr(qnode, "qtape", None)
-            if tape is not None:
-                builder.add_circuit(_extract_circuit_info(tape))
-        except Exception:
-            pass
+        # Losing the circuit must not also lose the execution and the result
+        # below. A call with no tape is reported rather than written quietly as
+        # a trace that names a backend and a result but no program.
+        with capture_guard(self.name, "QNode call circuit"):
+            if tape is None:
+                raise LookupError("QNode.construct built no tape during this call")
+            builder.add_circuit(_extract_circuit_info(tape))
 
         # Shots live on the device, as an int on older releases and as a Shots
         # object on newer ones.

@@ -96,6 +96,12 @@ this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   Qiskit 1.0 removed, and assigned to a field of a read-only model. It is no
   longer wrapped or read as console markup, so it can be copied from the
   terminal intact ([#6](https://github.com/csnp/qbom/issues/6)).
+- A PennyLane QNode call records the circuit it ran again. The adapter read the
+  tape from `QNode.tape` or `QNode.qtape`, which current PennyLane releases no
+  longer have, so every trace held a backend and a result but no circuit. It
+  now keeps the tape `QNode.construct` builds during the call, and a call that
+  builds no tape is reported once instead of being written as a complete trace
+  ([#11](https://github.com/csnp/qbom/issues/11)).
 
 ## [0.1.1] - 2026-08-21
 
