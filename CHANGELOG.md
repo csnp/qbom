@@ -60,6 +60,16 @@ this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   own. A `Circuit compared` row and a line under the table say which circuit
   was compared for each trace, including when only one of the two recorded a
   transpiled circuit. `qbom score` is unchanged.
+- **A Cirq run wrote a second, empty trace, and that was the one shown**
+  ([#8](https://github.com/csnp/qbom/issues/8)). Installing the Cirq adapter
+  imports `cirq_google`, which QBOM's import hook also watches, so the hook
+  installed a second Cirq adapter before the first had finished, and every
+  Cirq call was wrapped twice. One `cirq.Simulator().run()` then wrote a trace
+  holding its circuit twice, followed by an empty trace that `qbom.current()`
+  and `qbom.show()` returned. An adapter whose installation imports another
+  watched package is now installed once, so a run writes one trace, it records
+  the circuit once, and `qbom.current()` returns it. The empty traces that
+  earlier runs left in `~/.qbom/traces` are not removed.
 
 ## [0.1.1] - 2026-08-21
 

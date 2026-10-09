@@ -203,6 +203,9 @@ class Session:
         self._auto_save = True
         self._started = False
         self._import_finder: QBOMImportFinder | None = None
+        # Frameworks whose adapter install() is running right now. See
+        # _install_adapter_for for why a second request has to wait for it.
+        self._installing: set[str] = set()
 
     @classmethod
     def get(cls) -> Session:
@@ -306,7 +309,17 @@ class Session:
 
     def _install_adapter_for(self, framework: str) -> None:
         """Install adapter for a specific framework."""
-        if framework not in self.ADAPTER_MAP:
+        # An adapter's install() can import another package QBOM watches: the
+        # Cirq adapter imports cirq_google to look for the Quantum Engine, and
+        # the Qiskit adapter imports qiskit_aer to hook AerBackend. The import
+        # hook then asks for this framework's adapter again before the first
+        # one has been added to _adapters. Answering that request built a
+        # second adapter that wrapped every hook a second time, so one
+        # cirq.Simulator.run recorded its circuit twice and then finalized a
+        # second, empty trace, which is the one qbom.current() returned. The
+        # install already running hooks whatever it imported once the import
+        # returns, so the nested request has nothing left to do.
+        if framework not in self.ADAPTER_MAP or framework in self._installing:
             return
 
         # Check if already installed
@@ -315,6 +328,7 @@ class Session:
             if existing.name == framework:
                 return  # Already installed
 
+        self._installing.add(framework)
         try:
             mod = importlib.import_module(adapter_module)
             adapter = getattr(mod, adapter_class)(self)
@@ -322,10 +336,14 @@ class Session:
             self._adapters.append(adapter)
         except ImportError:
             pass  # Adapter not available
+        finally:
+            self._installing.discard(framework)
 
     def _reinstall_adapter_for(self, framework: str) -> None:
         """Reinstall adapter to pick up newly imported classes."""
-        if framework not in self.ADAPTER_MAP:
+        # See _install_adapter_for: a request made from inside a running
+        # install would hook the same functions a second time.
+        if framework not in self.ADAPTER_MAP or framework in self._installing:
             return
 
         # Find existing adapter
@@ -338,7 +356,11 @@ class Session:
 
         if existing_adapter:
             # Re-run install to hook any new classes
-            existing_adapter.install()
+            self._installing.add(framework)
+            try:
+                existing_adapter.install()
+            finally:
+                self._installing.discard(framework)
         else:
             # Install for first time
             self._install_adapter_for(framework)
