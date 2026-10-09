@@ -5,6 +5,22 @@ All notable changes to QBOM are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and
 this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Fixed
+
+- **The recorded backend is the one the caller passed to `run()`**
+  ([#4](https://github.com/csnp/qbom/issues/4)). QBOM wrapped only
+  `BackendV2.run` and `AerBackend.run`, and every concrete backend overrides
+  `run()`, so a backend that hands its circuits to a simulator was never seen
+  and its delegate was recorded instead. A run on `GenericBackendV2` was
+  written down as `aer_simulator`, `Aer (Local)`, 32 qubits, and a calibration
+  captured at transpile time was replaced by the delegate's, which has none.
+  `run()` is now wrapped on every backend class, including classes defined
+  after `import qbom`, and only the outermost `run()` of a call is recorded. A
+  calibration captured earlier in the trace is kept when a later read of the
+  same backend returns none, and is never carried to a different backend.
+
 ## [0.1.1] - 2026-08-21
 
 First tagged release. 0.1.0 was the version in `pyproject.toml` from the start

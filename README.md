@@ -173,9 +173,10 @@ qbom score <trace-id>
 | **PennyLane** | Supported |
 | **Braket** | Planned |
 
-Whichever framework you use, note the known defects listed for this release in
-[CHANGELOG.md](CHANGELOG.md), particularly that a backend which delegates to a
-simulator is currently recorded as the simulator ([#4](https://github.com/csnp/qbom/issues/4)).
+Whichever framework you use, note the known defects listed for each release in
+[CHANGELOG.md](CHANGELOG.md). In 0.1.1, a backend which delegates to a simulator
+is recorded as the simulator ([#4](https://github.com/csnp/qbom/issues/4)); this
+is fixed for the next release.
 
 ### Reproducibility Score
 
