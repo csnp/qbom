@@ -37,6 +37,18 @@ this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   since the package is not on PyPI. A test now checks every `qbom` command,
   qbom import, trace attribute and API reference name the docs show against
   the CLI and the package, and runs the analysis examples.
+- **`qbom verify` checks the software environment and the metadata**
+  ([#12](https://github.com/csnp/qbom/issues/12)). The content hash left out
+  the `environment` section, which is the software bill of materials, and the
+  `metadata` section, so a trace whose Python version and package versions had
+  been rewritten verified clean and carried the forged versions into its
+  CycloneDX and SPDX exports. Traces are now written in format 1.1, whose
+  content hash covers both sections, and editing any environment or metadata
+  field fails verification. Traces in format 1.0, written by 0.1.1 and
+  earlier, still verify against the content their format hashed, and the
+  check says that their environment and metadata are not covered. The format
+  a trace records decides which content is hashed, and a format this release
+  does not know fails the content hash check rather than skipping it.
 
 ## [0.1.1] - 2026-08-21
 

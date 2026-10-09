@@ -9,8 +9,8 @@
   "properties": {
     "qbom_version": {
       "type": "string",
-      "description": "QBOM specification version",
-      "const": "1.0"
+      "description": "Trace format version. It says which content the content hash was taken over: 1.0 hashes the scientific content, and 1.1 also hashes the environment and the metadata.",
+      "enum": ["1.0", "1.1"]
     },
     "id": {
       "type": "string",
@@ -24,7 +24,7 @@
     },
     "content_hash": {
       "type": "string",
-      "description": "SHA-256 hash of scientific content for verification",
+      "description": "SHA-256 hash, for verification, of the content the trace format covers",
       "pattern": "^[a-f0-9]{16}$"
     },
     "summary": {

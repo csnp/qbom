@@ -87,7 +87,7 @@ class TestTrace:
     def test_trace_to_dict(self):
         trace = Trace()
         d = trace.to_dict()
-        assert d["qbom_version"] == "1.0"
+        assert d["qbom_version"] == "1.1"
         assert "id" in d
         assert "created_at" in d
 
