@@ -314,21 +314,24 @@ Measurement count statistics.
 
 ## Module: qbom.analysis
 
-Analysis tools for traces.
+Analysis tools for traces. The `qbom score`, `qbom validate` and `qbom drift`
+commands are built on these.
 
-### calculate_score()
+### compute_score()
 
-Calculate reproducibility score.
+Compute the reproducibility score.
 
 ```python
-from qbom.analysis import calculate_score
+from qbom.analysis import compute_score
 
-result = calculate_score(trace)
-print(f"Score: {result.total_score}/100")
+result = compute_score(trace)
+print(f"Score: {result.total_score}/{result.max_score}")
 print(f"Grade: {result.grade}")
 ```
 
-**Returns:** `ScoreResult`
+**Returns:** `ReproducibilityScore`, with `total_score`, `max_score`, `grade`,
+`recommendations` and `components`. Each component is a `ScoreComponent` with
+`name`, `category`, `earned_points`, `max_points` and `status`.
 
 ### validate_trace()
 
@@ -338,7 +341,20 @@ Validate trace completeness.
 from qbom.analysis import validate_trace
 
 result = validate_trace(trace)
-result = validate_trace(trace, publication=True)  # Stricter
+print(f"Valid: {result.is_valid}, complete: {result.is_complete}")
+```
+
+**Returns:** `ValidationResult`
+
+### validate_for_publication()
+
+Validate with the stricter checks `qbom validate --publication` applies.
+
+```python
+from qbom.analysis import validate_for_publication
+
+result = validate_for_publication(trace)
+print(result.summary)
 ```
 
 **Returns:** `ValidationResult`
@@ -351,10 +367,12 @@ Analyze calibration drift.
 from qbom.analysis import analyze_drift
 
 result = analyze_drift(trace)
-print(f"Drift: {result.drift_score}")
+if result is not None:
+    print(f"Drift: {result.overall_drift_score:.0f}/100")
+    print(f"Feasibility: {result.reproduction_feasibility}")
 ```
 
-**Returns:** `DriftResult`
+**Returns:** `DriftAnalysis`, or `None` when the trace recorded no hardware.
 
 ---
 
