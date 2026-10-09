@@ -194,22 +194,39 @@ qbom diff TRACE_ID_1 TRACE_ID_2
 | `TRACE_ID_1` | First trace ID |
 | `TRACE_ID_2` | Second trace ID |
 
-**Example:**
+The circuit rows compare the circuit each run executed. Transpilation maps
+qubits, substitutes gates for the target basis and changes depth, so two runs of
+the same source circuit at different optimization levels, or against different
+backends, execute different circuits. Where a trace recorded a transpiled
+circuit, that is the one compared, and the `Source circuit hash` row compares
+the circuits as submitted. Where it did not, the circuit as submitted is
+compared. The `Circuit compared` row and the line under the table say which.
+
+**Example:** one source circuit transpiled to the basis `rz, sx, x, cx` at
+optimization levels 0 and 3.
 
 ```bash
-$ qbom diff qbom_abc123 qbom_def456
+$ qbom diff qbom_45794141 qbom_b699d139
 
-╭─────────────────────────────────────────────────────────────────────╮
-│ Property           │ qbom_abc123      │ qbom_def456      │ Match   │
-├────────────────────┼──────────────────┼──────────────────┼─────────┤
-│ Backend            │ ibm_brisbane     │ ibm_kyoto        │ ✗       │
-│ Qubits Used        │ [12, 15]         │ [0, 1]           │ ✗       │
-│ Optimization       │ 3                │ 2                │ ✗       │
-│ Shots              │ 4096             │ 4096             │ ✓       │
-│ Circuit Hash       │ ad3deb49...      │ ad3deb49...      │ ✓       │
-╰─────────────────────────────────────────────────────────────────────╯
+                           QBOM Comparison
+╭─────────────────────┬──────────────────┬──────────────────┬───────╮
+│ Property            │ qbom_45794141    │ qbom_b699d139    │ Match │
+├─────────────────────┼──────────────────┼──────────────────┼───────┤
+│ Python              │ 3.12.12          │ 3.12.12          │   ✓   │
+│ Quantum SDK         │ qiskit==2.5.2    │ qiskit==2.5.2    │   ✓   │
+│ Circuit compared    │ transpiled       │ transpiled       │   ✓   │
+│ Circuit qubits      │ 3                │ 3                │   ✓   │
+│ Circuit depth       │ 14               │ 6                │   ✗   │
+│ Circuit gates       │ 16 (9 1q, 4 2q)  │ 8 (3 1q, 2 2q)   │   ✗   │
+│ Circuit hash        │ 68e64e9917d33a7c │ c0ccfad4f8df576e │   ✗   │
+│ Source circuit hash │ 1cff503a9be0a406 │ 1cff503a9be0a406 │   ✓   │
+│ Backend             │ aer_simulator    │ aer_simulator    │   ✓   │
+│ Physical qubits     │ []               │ []               │   ✓   │
+│ Shots               │ 256              │ 256              │   ✓   │
+╰─────────────────────┴──────────────────┴──────────────────┴───────╯
+Circuit rows compare the transpiled circuit each trace executed, not the circuit as submitted.
 
-⚠ Different backends may explain result differences
+⚠ Same source circuit, but transpilation produced different executed circuits
 ```
 
 ---
