@@ -25,7 +25,9 @@ this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   `run()` is now wrapped on every backend class, including classes defined
   after `import qbom`, and only the outermost `run()` of a call is recorded. A
   calibration captured earlier in the trace is kept when a later read of the
-  same backend returns none, and is never carried to a different backend.
+  same backend returns none, and is never carried to a different backend. A
+  `GenericBackendV2` run is recorded under its own name and still as a
+  simulator, because that backend simulates its circuits locally.
 - **The documentation shows only commands, options and functions that exist**
   ([#7](https://github.com/csnp/qbom/issues/7)). The CLI reference said a trace
   id could be a path to a trace file, and three workflows in
