@@ -14,6 +14,7 @@ import contextvars
 import functools
 import hashlib
 import inspect
+import sys
 import weakref
 from collections.abc import Callable
 from typing import TYPE_CHECKING, Any
@@ -56,6 +57,16 @@ def _subclasses(cls: type) -> list[type]:
             found.append(sub)
             pending.extend(sub.__subclasses__())
     return found
+
+
+def _is_generic_backend(backend: Any) -> bool:
+    """True for a GenericBackendV2, which describes no device and simulates its circuits."""
+    # A backend of this class can only exist once its module has been imported,
+    # so the class is looked up rather than imported: `import qiskit` does not
+    # load that module, and most runs never need it.
+    fake_provider = sys.modules.get("qiskit.providers.fake_provider")
+    generic = getattr(fake_provider, "GenericBackendV2", None)
+    return isinstance(generic, type) and isinstance(backend, generic)
 
 
 def _hash_circuit(circuit: Any) -> str:
@@ -284,6 +295,13 @@ class QiskitAdapter(Adapter):
                 is_sim = "simulator" in backend.name.lower() or "aer" in backend.name.lower()
         except Exception:
             is_sim = False
+
+        # Neither place says a GenericBackendV2 is a simulator: it is named for
+        # its qubit count (generic_backend_5q) and its options carry no
+        # simulator flag. Its run() still simulates the circuits, so a trace
+        # that names it has to say so.
+        if not is_sim:
+            is_sim = _is_generic_backend(backend)
 
         provider_name = "Unknown"
         try:

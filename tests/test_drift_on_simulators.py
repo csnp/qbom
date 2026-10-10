@@ -17,6 +17,12 @@ as a perfect result while meaning the worst one.
 
 from __future__ import annotations
 
+import importlib.util
+import json
+import os
+import subprocess
+import sys
+import textwrap
 from datetime import datetime, timezone
 
 import pytest
@@ -28,6 +34,8 @@ from qbom.core.models import Calibration, GateProperties, Hardware, QubitPropert
 from qbom.core.session import Session
 from qbom.core.trace import Trace, TraceBuilder
 
+QISKIT_AVAILABLE = importlib.util.find_spec("qiskit") is not None and importlib.util.find_spec("qiskit_aer") is not None
+
 # The three local simulators the defect was reported against, with the
 # provider each adapter records for them.
 SIMULATORS = [
@@ -35,6 +43,23 @@ SIMULATORS = [
     ("Cirq", "cirq.Simulator"),
     ("Unknown", "generic_backend_5q"),
 ]
+
+# A run on GenericBackendV2, for a fresh interpreter: the adapter patches Qiskit
+# when it is imported, and what it records for this backend is what is tested.
+GENERIC_BACKEND_RUN = """
+    import qbom
+
+    from qiskit import QuantumCircuit, transpile
+    from qiskit.providers.fake_provider import GenericBackendV2
+
+    qc = QuantumCircuit(2)
+    qc.h(0)
+    qc.cx(0, 1)
+    qc.measure_all()
+
+    backend = GenericBackendV2(num_qubits=5, seed=3)
+    backend.run(transpile(qc, backend), shots=128).result()
+"""
 
 
 def simulator_trace(provider: str, backend: str) -> Trace:
@@ -111,6 +136,48 @@ def test_cli_drift_on_a_simulator_says_drift_does_not_apply(trace_store) -> None
     assert "100/100" not in result.output
     assert "Very Low" not in result.output
     assert "likely produce different results" not in result.output
+
+
+@pytest.mark.skipif(not QISKIT_AVAILABLE, reason="requires qiskit and qiskit-aer")
+def test_cli_drift_on_a_generic_backend_run_says_drift_does_not_apply(tmp_path, monkeypatch) -> None:
+    """
+    The generic_backend_5q case on a trace the Qiskit adapter wrote.
+
+    The traces above are built by hand, so they hold `is_simulator` whether or
+    not a run records it. GenericBackendV2 simulates its circuits locally, and
+    neither its name nor its options say so. Recorded as hardware, its run was
+    scored 100/100 like hardware whose calibration went uncaptured.
+    """
+    env = dict(os.environ, HOME=str(tmp_path), USERPROFILE=str(tmp_path))
+    env.pop("PYTHONHOME", None)
+
+    completed = subprocess.run(
+        [sys.executable, "-c", textwrap.dedent(GENERIC_BACKEND_RUN)],
+        env=env,
+        capture_output=True,
+        text=True,
+        timeout=300,
+    )
+    assert completed.returncode == 0, f"stdout:\n{completed.stdout}\nstderr:\n{completed.stderr}"
+
+    store = tmp_path / ".qbom" / "traces"
+    written = sorted(store.glob("*.json"))
+    assert len(written) == 1, f"one run wrote {len(written)} traces: {[p.name for p in written]}"
+
+    hardware = json.loads(written[0].read_text())["hardware"]
+    assert hardware["backend"] == "generic_backend_5q", "premise: the trace names the backend the run was given"
+    assert hardware.get("calibration") is None, "premise: GenericBackendV2 has no calibration to capture"
+
+    monkeypatch.setattr(Session.get(), "_storage_path", store)
+    result = CliRunner().invoke(main, ["drift", written[0].stem])
+
+    assert result.exit_code == 0, result.output
+    assert "Drift Score: not applicable" in result.output
+    assert "generic_backend_5q is a simulator" in result.output
+    assert "100/100" not in result.output
+    assert "Very Low" not in result.output
+    assert "likely produce different results" not in result.output
+    assert hardware["is_simulator"] is True
 
 
 def test_cli_drift_score_states_its_direction(trace_store) -> None:
