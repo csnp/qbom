@@ -542,11 +542,8 @@ QBOM reads no environment variables of its own. The store is always
 | Code | Description |
 |------|-------------|
 | 0 | Success |
-| 1 | The trace was not found or could not be read, an export failed, or `qbom verify` found a hash that does not match |
+| 1 | The trace was not found or could not be read, an export failed, `qbom verify` found a hash that does not match, or `qbom validate` reported FAIL |
 | 2 | Usage error: an unknown command or option, a missing argument, or a `qbom verify` file that does not exist |
-
-`qbom validate` exits 0 even when it reports FAIL
-([#6](https://github.com/csnp/qbom/issues/6)), so it cannot yet gate a CI step.
 
 ---
 
